@@ -22,37 +22,41 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(disposable);
 
     context.subscriptions.push(
-        vscode.languages.registerCompletionItemProvider('*', {
-        provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
-            return [
-                new vscode.CompletionItem("[GlobalParams]"),
-                new vscode.CompletionItem("[Variables]"),
-                new vscode.CompletionItem("[AuxVariables]"),
-                new vscode.CompletionItem("[Mesh]"),
-                new vscode.CompletionItem("[BCS]"),
-                new vscode.CompletionItem("[ICS]"),
-                new vscode.CompletionItem("[Problem]"),
-                new vscode.CompletionItem("[Precursors]"),
-                new vscode.CompletionItem("[Kernels]"),
-                new vscode.CompletionItem("[AuxKernels]"),
-                new vscode.CompletionItem("[Functions]"),
-                new vscode.CompletionItem("[Materials]"),
-                new vscode.CompletionItem("[Executioner]"),
-                new vscode.CompletionItem("[Preconditioning]"),
-                new vscode.CompletionItem("[Outputs]"),
-                new vscode.CompletionItem("active = ''"),
-            ];
-        }})
+        vscode.languages.registerCompletionItemProvider(
+            {language: "moose"}, new CompletionItemProvider(), '[')
         );
 
     context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider(
             {language: "moose"}, new DocumentSymbolProvider()
         ));
+
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {
 }
+
+class CompletionItemProvider implements vscode.CompletionItemProvider {
+    provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
+        return [
+            new vscode.CompletionItem("[GlobalParams]"),
+            new vscode.CompletionItem("[Variables]"),
+            new vscode.CompletionItem("[AuxVariables]"),
+            new vscode.CompletionItem("[Mesh]"),
+            new vscode.CompletionItem("[BCS]"),
+            new vscode.CompletionItem("[ICS]"),
+            new vscode.CompletionItem("[Problem]"),
+            new vscode.CompletionItem("[Precursors]"),
+            new vscode.CompletionItem("[Kernels]"),
+            new vscode.CompletionItem("[AuxKernels]"),
+            new vscode.CompletionItem("[Functions]"),
+            new vscode.CompletionItem("[Materials]"),
+            new vscode.CompletionItem("[Executioner]"),
+            new vscode.CompletionItem("[Preconditioning]"),
+            new vscode.CompletionItem("[Outputs]"),
+            new vscode.CompletionItem("active = ''"),
+        ];
+    }}
 
 class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     public provideDocumentSymbols(document: vscode.TextDocument,
