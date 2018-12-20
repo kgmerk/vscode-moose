@@ -26,3 +26,7 @@ This extension is hosted at Visual Studio Marketplace
 ### 0.0.1
 
 Initial release, including syntax colouring, code folding and outline view
+
+### 0.0.2
+
+Fix bug for Sub-Block names containing _
