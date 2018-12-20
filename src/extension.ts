@@ -27,12 +27,14 @@ export function activate(context: vscode.ExtensionContext) {
             return [
                 new vscode.CompletionItem("[GlobalParams]"),
                 new vscode.CompletionItem("[Variables]"),
+                new vscode.CompletionItem("[AuxVariables]"),
                 new vscode.CompletionItem("[Mesh]"),
                 new vscode.CompletionItem("[BCS]"),
                 new vscode.CompletionItem("[ICS]"),
                 new vscode.CompletionItem("[Problem]"),
                 new vscode.CompletionItem("[Precursors]"),
                 new vscode.CompletionItem("[Kernels]"),
+                new vscode.CompletionItem("[AuxKernels]"),
                 new vscode.CompletionItem("[Functions]"),
                 new vscode.CompletionItem("[Materials]"),
                 new vscode.CompletionItem("[Executioner]"),
@@ -83,18 +85,18 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                         kind: vscode.SymbolKind.Field,
                         location: new vscode.Location(document.uri, 
                             new vscode.Range(new vscode.Position(line.lineNumber, 1), 
-                            new vscode.Position(last_line.lineNumber, 1)))
+                            new vscode.Position(last_line.lineNumber, last_line.text.length)))
                     });
                 }
                 if (head2_regex.test(text)) {
  
                     // Find the closing [../]
-                    var last_line = line;
-                    for (var j = i; j < document.lineCount; j++) {
-                        var line2 = document.lineAt(j);
-                        var text2 = line2.text.trim();
-                        if (text2 === "[../]") {
-                            last_line = line2;
+                    var last_line2 = line;
+                    for (var k = i; k < document.lineCount; k++) {
+                        var line3 = document.lineAt(k);
+                        var text3 = line3.text.trim();
+                        if (text3 === "[../]") {
+                            last_line2 = line3;
                             break;
                         }
                     }
@@ -105,7 +107,7 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                             kind: vscode.SymbolKind.String,
                             location: new vscode.Location(document.uri, 
                                 new vscode.Range(new vscode.Position(line.lineNumber, 1), 
-                                new vscode.Position(last_line.lineNumber, 1)))
+                                new vscode.Position(last_line2.lineNumber, last_line2.text.length)))
                             });
                 }
            }
