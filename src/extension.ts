@@ -67,7 +67,7 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 
                     symbols.push({
                         name: text.substr(1, text.length-2),
-                        containerName: "Header1",
+                        containerName: "Main Block",
                         kind: vscode.SymbolKind.Field,
                         location: new vscode.Location(document.uri, 
                             new vscode.Range(new vscode.Position(line.lineNumber, 1), 
@@ -77,7 +77,7 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                 if (head2_regex.test(text)) {
                     symbols.push({
                         name: text.substr(3, text.length-4),
-                        containerName: "Header2",
+                        containerName: "Sub Block",
                         kind: vscode.SymbolKind.String,
                         location: new vscode.Location(document.uri, line.range)
                     });
