@@ -57,8 +57,8 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
             token: vscode.CancellationToken): Thenable<vscode.SymbolInformation[]> {
         return new Promise((resolve, reject) => {
             var symbols = [];
-            var head1_regex = new RegExp('\\[[a-zA-Z0-9]+\\]');
-            var head2_regex = new RegExp('\\[\\.\\/[a-zA-Z0-9]+\\]');
+            var head1_regex = new RegExp('\\[[_a-zA-Z0-9]+\\]');
+            var head2_regex = new RegExp('\\[\\.\\/[_a-zA-Z0-9]+\\]');
            
             for (var i = 0; i < document.lineCount; i++) {
                 var line = document.lineAt(i);
@@ -87,12 +87,26 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                     });
                 }
                 if (head2_regex.test(text)) {
+ 
+                    // Find the closing [../]
+                    var last_line = line;
+                    for (var j = i; j < document.lineCount; j++) {
+                        var line2 = document.lineAt(j);
+                        var text2 = line2.text.trim();
+                        if (text2 === "[../]") {
+                            last_line = line2;
+                            break;
+                        }
+                    }
+
                     symbols.push({
-                        name: text.substr(3, text.length-4),
-                        containerName: "Sub Block",
-                        kind: vscode.SymbolKind.String,
-                        location: new vscode.Location(document.uri, line.range)
-                    });
+                            name: text.substr(3, text.length-4),
+                            containerName: "Sub Block",
+                            kind: vscode.SymbolKind.String,
+                            location: new vscode.Location(document.uri, 
+                                new vscode.Range(new vscode.Position(line.lineNumber, 1), 
+                                new vscode.Position(last_line.lineNumber, 1)))
+                            });
                 }
            }
 
