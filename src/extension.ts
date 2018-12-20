@@ -25,9 +25,21 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.languages.registerCompletionItemProvider('*', {
         provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
             return [
+                new vscode.CompletionItem("[GlobalParams]"),
+                new vscode.CompletionItem("[Variables]"),
                 new vscode.CompletionItem("[Mesh]"),
                 new vscode.CompletionItem("[BCS]"),
-                new vscode.CompletionItem("[GlobalParams]")];
+                new vscode.CompletionItem("[ICS]"),
+                new vscode.CompletionItem("[Problem]"),
+                new vscode.CompletionItem("[Precursors]"),
+                new vscode.CompletionItem("[Kernels]"),
+                new vscode.CompletionItem("[Functions]"),
+                new vscode.CompletionItem("[Materials]"),
+                new vscode.CompletionItem("[Executioner]"),
+                new vscode.CompletionItem("[Preconditioning]"),
+                new vscode.CompletionItem("[Outputs]"),
+                new vscode.CompletionItem("active = ''"),
+            ];
         }})
         );
 
