@@ -1,0 +1,75 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "moose",
+	"patterns": [
+		{
+			"include": "#temp-var"
+		},
+		{	"name": "string.quoted.double.moose",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{	"name": "constant.character.escape.moose",
+					"match": "\\\\."
+				},
+				{	"include": "#temp-var" }
+			]
+		},
+		{	"name": "string.quoted.single.moose",
+			"begin": "'",
+			"end": "'",
+			"patterns": [
+				{	"name": "constant.character.escape.moose",
+					"match": "\\\\."
+				},
+				{	"include": "#temp-var" }
+			]
+		},
+		{	"name": "comment.line.number-sign.moose",
+			"begin": "#",
+			"end": "\n",
+			"beginCaptures": { "0": { "name": "punctuation.definition.comment.yaml" }}
+		},
+		{	"name": "markup.heading.1.moose",
+			"begin": "\\[[a-zA-Z0-9]+",
+			"end": "\\]"
+		},
+		{	"name": "comment.line.character.moose",
+			"match": "\\[\\]"
+		},
+		{	"name": "markup.heading.2.moose",
+			"begin": "\\[\\.\\/[a-zA-Z0-9]+",
+			"end": "\\]"
+		},
+		{	"name": "comment.line.character.moose",
+			"match": "\\[\\.\\.\/\\]"
+		},
+		{	"name": "keyword.operator.assignment.moose",
+			"match": "\\="
+		},
+		{	"name": "constant.numeric.float.moose",
+			"match": "\\b(?i:(\\d+\\.\\d*(e[\\-\\+]?\\d+)?))(?=[^[:alpha:]_])"
+		},
+		{	"name": "constant.numeric.float.moose",
+			"match": "(?<=[^[:alnum:]_])(?i:(\\.\\d+(e[\\-\\+]?\\d+)?))"
+		},
+		{	"name": "constant.numeric.float.moose",
+			"match": "\b(?i:(\\d+e[\\-\\+]?\\d+))"
+		},
+		{	"name": "constant.numeric.integer.decimal.long.moose",
+			"match": "\b(?i:([1-9]+[0-9]*|0)L)"
+		},
+		{	"name": "constant.numeric.integer.decimal.moose",
+			"match": "\b([1-9]+[0-9]*|0)"
+		}
+	],
+	"repository": {
+		"temp-var":{
+			"name": "variable.parameter.moose",
+			"begin": "@v{",
+			"end": "}",
+			"patterns": []
+		}
+	},
+	"scopeName": "source.moose"
+}
