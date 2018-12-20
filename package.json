@@ -4,10 +4,20 @@
     "displayName": "MOOSE for VSCode",
     "title": "MOOSE for VSCode",
     "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
+    "keywords": ["moose", "multiphysics"],
     "authors": [
       "Chris Sewell"
     ],
     "publisher": "cjsewell",
+    "license": "SEE LICENSE IN LICENSE.txt",
+    "bugs": {
+        "url": "https://github.com/chrisjsewell/vscode-moose/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/chrisjsewell/vscode-moose.git"
+    },
+    "homepage": "https://github.com/chrisjsewell/vscode-moose/blob/master/README.md",
     "engines": {
         "vscode": "^1.30.0"
     },
