@@ -21,19 +21,102 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(disposable);
 
+    var moose_selector = {language: "moose"};
+
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
-            {language: "moose"}, new CompletionItemProvider(), '[')
-        );
+            moose_selector, new CompletionItemProvider(), '['));
 
-    context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider(
-            {language: "moose"}, new DocumentSymbolProvider()
-        ));
+    context.subscriptions.push(
+        vscode.languages.registerDocumentSymbolProvider(
+            moose_selector, new DocumentSymbolProvider()));
+
+    context.subscriptions.push(
+        vscode.languages.registerReferenceProvider(
+            moose_selector, new ReferenceProvider()));
 
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {
+}
+
+class ReferenceProvider implements vscode.ReferenceProvider {
+    public provideReferences(
+        document: vscode.TextDocument, position: vscode.Position,
+        options: { includeDeclaration: boolean }, token: vscode.CancellationToken): Thenable<vscode.Location[]> {
+            return this.doFindReferences(document, position, options, token);
+    }
+
+    private doFindReferences(
+        document: vscode.TextDocument, position: vscode.Position, 
+        options: { includeDeclaration: boolean }, token: vscode.CancellationToken): Thenable<vscode.Location[]> {
+		return new Promise<vscode.Location[]>((resolve, reject) => {
+			// get current word
+            let wordRange = document.getWordRangeAtPosition(position);
+            
+            // ignore if empty
+			if (!wordRange) {
+                //TODO how to show error message at cursor position?
+                vscode.window.showWarningMessage("empty string not referencable");
+                // console.log("empty string not referencable");
+                return reject("empty string not referencable");
+            }
+            let word_text = document.getText(wordRange);
+
+            // ignore if is a number
+            if (!isNaN(Number(word_text))){
+                // return resolve([]);
+                //TODO how to show error message at cursor position?
+                vscode.window.showWarningMessage("numbers are not referencable");
+                // console.log("numbers are not referencable");
+                return reject("numbers are not referencable");
+            }
+
+            let results: vscode.Location[] = [];
+
+            for (var i = 0; i < document.lineCount; i++) {
+                var line = document.lineAt(i);
+                
+                // remove comments
+                var line_text = line.text.trim().split("#")[0];
+
+                //TODO reference variable instatiation in [Variables] block e.g. [./c]
+
+                // get right side of equals
+                if (!line_text.includes("=")) {
+                    continue;
+                }
+                var larray = line_text.split("=");
+                if (larray.length < 2){
+                    continue;
+                }
+                var equals_text = larray[1].trim();
+
+                // remove quotes
+                if (equals_text.startsWith("'") && equals_text.endsWith("'")) {
+                    equals_text = equals_text.substr(1, equals_text.length - 2);
+                }
+                if (equals_text.startsWith('"') && equals_text.endsWith('"')) {
+                    equals_text = equals_text.substr(1, equals_text.length - 2);
+                }
+
+                // test if only reference
+                if (equals_text === word_text) {
+                    results.push(new vscode.Location(document.uri, line.range));
+                } else {
+                    // test if one of many references
+                    for (let elem of equals_text.split(" ")) {
+                        if (elem.trim() === word_text) {
+                            results.push(new vscode.Location(document.uri, line.range));
+                            break;
+                        }
+                }
+                }
+
+            }
+            resolve(results);
+        });}
 }
 
 class CompletionItemProvider implements vscode.CompletionItemProvider {
@@ -65,12 +148,21 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
             var symbols = [];
             var head1_regex = new RegExp('\\[[_a-zA-Z0-9]+\\]');
             var head2_regex = new RegExp('\\[\\.\\/[_a-zA-Z0-9]+\\]');
+            var in_variables = false;
+            var kind = null;
            
             for (var i = 0; i < document.lineCount; i++) {
                 var line = document.lineAt(i);
                 var text = line.text.trim();
 
                 if (head1_regex.test(text)) {
+
+                    // Check if in variables block
+                    if (text.substr(1, text.length-2).match('Variables')) {
+                        in_variables = true;
+                    } else {
+                        in_variables = false;
+                    }
 
                     // Find the closing []
                     var last_line = line;
@@ -105,10 +197,16 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                         }
                     }
 
+                    if (in_variables) {
+                        kind = vscode.SymbolKind.Variable;
+                    } else {
+                        kind = vscode.SymbolKind.String;
+                    }
+                    
                     symbols.push({
                             name: text.substr(3, text.length-4),
                             containerName: "Sub Block",
-                            kind: vscode.SymbolKind.String,
+                            kind: kind,
                             location: new vscode.Location(document.uri, 
                                 new vscode.Range(new vscode.Position(line.lineNumber, 1), 
                                 new vscode.Position(last_line2.lineNumber, last_line2.text.length)))
