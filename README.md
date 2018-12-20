@@ -1,65 +1,28 @@
-# moose README
+# VSCode for MOOSE
 
-This is the README for your extension "moose". After writing up a brief description, we recommend including the following sections.
+This extension provides language support for input files of MOOSE (Multiphysics Object Oriented Simulation Environment) applications.
+
+![Example Workspace](images/example_workspace.png)
+
+Github Repo: https://github.com/chrisjsewell/vscode-moose
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+- Syntax Highlighting
+- Input Block Folding
+- Input Blocks Outline View
 
-For example if there is an image subfolder under your extension project workspace:
+## How to install from Marketplace
 
-\!\[feature X\]\(images/feature-x.png\)
+This extension is hosted at Visual Studio Marketplace
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
-
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: enable/disable this extension
-* `myExtension.thing`: set to `blah` to do something
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
+1. Upgrade to Visual Studio Code 1.15.0 or above.
+2. Switch to the Extensions view by clicking the fifth icon in the left most bar.
+3. Type “moose” in the search box and hit the Enter key.
+4. Click “Install” button to install “MOOSE for VSCode” extension.
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
------------------------------------------------------------------------------------------------------------
-
-## Working with Markdown
-
-**Note:** You can author your README using Visual Studio Code.  Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux)
-* Toggle preview (`Shift+CMD+V` on macOS or `Shift+Ctrl+V` on Windows and Linux)
-* Press `Ctrl+Space` (Windows, Linux) or `Cmd+Space` (macOS) to see a list of Markdown snippets
-
-### For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+Initial release, including syntax colouring, code folding and outline view
