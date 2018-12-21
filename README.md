@@ -11,6 +11,9 @@ Github Repo: https://github.com/chrisjsewell/vscode-moose
 - Syntax Highlighting
 - Input Block Folding
 - Input Blocks Outline View
+- Autocomplete block names
+- Find/Peek All References to Variables
+- Main/Sub-Block snippets
 
 ## How to install from Marketplace
 

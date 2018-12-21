@@ -41,6 +41,9 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
 }
 
+// TODO refactor reference names
+// TODO find src/include file of type = <NAME>
+
 class ReferenceProvider implements vscode.ReferenceProvider {
     public provideReferences(
         document: vscode.TextDocument, position: vscode.Position,
@@ -74,14 +77,25 @@ class ReferenceProvider implements vscode.ReferenceProvider {
             }
 
             let results: vscode.Location[] = [];
+            let in_variables = false;
 
             for (var i = 0; i < document.lineCount; i++) {
                 var line = document.lineAt(i);
                 
                 // remove comments
-                var line_text = line.text.trim().split("#")[0];
+                var line_text = line.text.trim().split("#")[0].trim();
 
-                //TODO reference variable instatiation in [Variables] block e.g. [./c]
+                // reference variable instatiation in [Variables] block e.g. [./c]
+                if (line_text === "[Variables]" || line_text === "[AuxVariables]") {
+                    in_variables = true;
+                }
+                if (line_text === "[]") {
+                    in_variables = false;
+                }
+                if (in_variables && line_text === "[./"+word_text+"]"){
+                    results.push(new vscode.Location(document.uri, line.range));
+                    continue;
+                }
 
                 // get right side of equals
                 if (!line_text.includes("=")) {
@@ -122,22 +136,25 @@ class ReferenceProvider implements vscode.ReferenceProvider {
 class CompletionItemProvider implements vscode.CompletionItemProvider {
     provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
         return [
-            new vscode.CompletionItem("[GlobalParams]"),
-            new vscode.CompletionItem("[Variables]"),
-            new vscode.CompletionItem("[AuxVariables]"),
-            new vscode.CompletionItem("[Mesh]"),
-            new vscode.CompletionItem("[BCS]"),
-            new vscode.CompletionItem("[ICS]"),
-            new vscode.CompletionItem("[Problem]"),
-            new vscode.CompletionItem("[Precursors]"),
-            new vscode.CompletionItem("[Kernels]"),
-            new vscode.CompletionItem("[AuxKernels]"),
-            new vscode.CompletionItem("[Functions]"),
-            new vscode.CompletionItem("[Materials]"),
-            new vscode.CompletionItem("[Executioner]"),
-            new vscode.CompletionItem("[Preconditioning]"),
-            new vscode.CompletionItem("[Outputs]"),
-            new vscode.CompletionItem("active = ''"),
+            new vscode.CompletionItem("./"),
+            new vscode.CompletionItem("../"),
+            new vscode.CompletionItem("GlobalParams"),
+            new vscode.CompletionItem("Variables"),
+            new vscode.CompletionItem("AuxVariables"),
+            new vscode.CompletionItem("Mesh"),
+            new vscode.CompletionItem("BCS"),
+            new vscode.CompletionItem("ICS"),
+            new vscode.CompletionItem("Problem"),
+            new vscode.CompletionItem("Precursors"),
+            new vscode.CompletionItem("Kernels"),
+            new vscode.CompletionItem("AuxKernels"),
+            new vscode.CompletionItem("Functions"),
+            new vscode.CompletionItem("Materials"),
+            new vscode.CompletionItem("Executioner"),
+            new vscode.CompletionItem("Preconditioning"),
+            new vscode.CompletionItem("Outputs"),
+            // new vscode.CompletionItem("active = ''"),  
+            // TODO if `active` present in block, dim out non-active sub-blocks or action to fold them?
         ];
     }}
 
@@ -158,7 +175,7 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                 if (head1_regex.test(text)) {
 
                     // Check if in variables block
-                    if (text.substr(1, text.length-2).match('Variables')) {
+                    if (text.substr(1, text.length-2).match('Variables') || text.substr(1, text.length-2).match('AuxVariables')) {
                         in_variables = true;
                     } else {
                         in_variables = false;

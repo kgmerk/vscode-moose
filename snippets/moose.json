@@ -1,0 +1,20 @@
+{
+    "main-block": {
+        "description": "create a main block",
+        "prefix": "main-block",
+        "body": [
+            "[${1:Variables}]",
+            "\t$0",
+            "[]"
+        ]
+    },
+    "sub-block": {
+        "description": "create a sub block",
+        "prefix": "sub-block",
+        "body": [
+            "[./${1:name}]",
+            "\t$0",
+            "[../]"
+        ]
+    }
+}

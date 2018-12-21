@@ -33,19 +33,28 @@
             {
             "command": "extension.sayHello",
             "title": "Hello World"
-        }
-    ],
-        "languages": [{
-            "id": "moose",
-            "aliases": ["moose", "Moose"],
-            "extensions": [".i"],
-            "configuration": "./language-configuration.json"
         }],
-        "grammars": [{
-            "language": "moose",
-            "scopeName": "source.moose",
-            "path": "./syntaxes/moose.tmLanguage.json"
-        }]
+        "languages": [
+            {
+                "id": "moose",
+                "aliases": ["moose", "Moose"],
+                "extensions": [".i"],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "moose",
+                "scopeName": "source.moose",
+                "path": "./syntaxes/moose.tmLanguage.json"
+            }
+        ],
+        "snippets": [
+            {
+                "language": "moose",
+                "path": "./snippets/moose.json"
+            }
+        ]
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
