@@ -13,7 +13,7 @@ Github Repo: https://github.com/chrisjsewell/vscode-moose
 - Input Blocks Outline View
 - 'Find'/'Peek' All References to Variables
 - 'GoTo'/'Peek' Definitions of Moose Objects
-- Autocomplete block names
+- Autocomplete block names and Moose Objects
 - Main/Sub-Block snippets
 
 ### Find/Peek All References
@@ -33,15 +33,31 @@ and ignoring specified folders.
 Note that multiple folders can be added to a workspace by: `File -> Add Folder To Workspace...`.
 In this manner, you can find definitions from both your working/app folder and the main moose library.
 
-Ignored folder regexes can be configured in `Preferences -> Settings`: `moose.definitions.ignore`.
+Ignored folder regexes can be configured : `moose.definitions.ignore` (See Settings).
 
 The C/C++ extension is used for syntax highlighting of the C file.
 
-### Autocomplete and Snippets
+### Autocomplete
 
-Provides autocomplete suggestions for main blocks and snippets for sub-blocks.
+Autocompletion triggers:
+
+- for Blocks is triggered after typing `[`,
+- for Moose Objects is triggered after typing `type =`,
 
 ![Autocomplete](images/autocomplete.gif)
+
+See Settings for controlling where MOOSE Objects are searched for.
+
+## Settings
+
+Settings are configured in `Preferences -> Settings`:
+
+| Name                         | Description                                                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `moose.definitions.ignore`   | Specifies the folder regexes to ignore when searching for MOOSE object                                               |
+| `moose.autocomplete.modules` | Specifies the moose module folders to search in for autocomplete Moose Objects (`**/modules/<MODULE>/src/<TYPE>/*.C`)|
+| `moose.autocomplete.types`   | Specifies the src subfolders to search in for autocomplete Moose Objects (`**/framework/src/<TYPE>/*.C`)             |
+| `moose.autocomplete.other`   | Specifies other regexes to search in for autocomplete Moose Objects                                                  |
 
 ## How to install from Marketplace
 
@@ -69,3 +85,7 @@ Added Autocomplete block names, Find/Peek All References to Variables, and Main/
 ### 0.2.0
 
 Added syntax colouring of moose objects and 'Go To'/'Peek' Definitions
+
+### 0.3.0
+
+Added MOOSE object autocompletion

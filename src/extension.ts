@@ -2,6 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as pathparse from 'path';
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -21,9 +22,13 @@ export function activate(context: vscode.ExtensionContext) {
 
     var moose_selector = {scheme: 'file', language: "moose"};
 
+    var autocompletion = new CompletionItemProvider();
+    // TODO how to trigger updateMooseObjects if files change
+    autocompletion.updateMooseObjects();
+
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
-            moose_selector, new CompletionItemProvider(), '['));
+            moose_selector, autocompletion, "[", "="));
 
     context.subscriptions.push(
         vscode.languages.registerDocumentSymbolProvider(
@@ -94,6 +99,7 @@ class DefinitionProvider implements vscode.DefinitionProvider {
                             return;
                         }
                         if (uris_found.length > 1) {
+                            vscode.window.showWarningMessage("multiple declarations found");
                             reject("multiple declarations found");
                             return;
                         }
@@ -205,30 +211,115 @@ class ReferenceProvider implements vscode.ReferenceProvider {
 }
 
 class CompletionItemProvider implements vscode.CompletionItemProvider {
-    provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
-        return [
-            new vscode.CompletionItem("./"),
-            new vscode.CompletionItem("../"),
-            new vscode.CompletionItem("GlobalParams", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Variables", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("AuxVariables", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Mesh", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("BCS", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("ICS", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Problem", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Precursors", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Kernels", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("AuxKernels", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Functions", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Materials", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Executioner", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Preconditioning", vscode.CompletionItemKind.Field),
-            new vscode.CompletionItem("Outputs", vscode.CompletionItemKind.Field),
-            // new vscode.CompletionItem("active = ''"),  
-            // TODO if `active` present in block, dim out non-active sub-blocks or action to fold them?
-            // TODO add MOOSE objects to autocomplete; but shouldn't need to find them all on every completion event
-        ];
-    }}
+
+    private moose_objects: vscode.Uri[];
+    private moose_blocks: string[];
+    constructor(){
+        this.moose_objects = [];
+        this.moose_blocks = [
+            "GlobalParams",
+            "Variables",
+            "AuxVariables",
+            "Mesh",
+            "BCs",
+            "ICs",
+            "Problem",
+            "Precursors",
+            "Kernels",
+            "AuxKernels",
+            "Functions",
+            "Materials",
+            "Executioner",
+            "Preconditioning",
+            "Outputs"
+             ];
+        
+    }
+
+    public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
+
+        var completions = [];
+        
+        // Block name completions after square bracket
+        var before_sbracket = false;
+        if (position.character !== 0) {
+            var char = document.getText(new vscode.Range(position.translate(0, -1), position));
+            if (char === "[") {
+                before_sbracket = true;
+            }
+        }
+        if (before_sbracket) {
+            for (let bname of this.moose_blocks) {
+                completions.push(new vscode.CompletionItem(bname, vscode.CompletionItemKind.Field));
+            }
+            completions.push(new vscode.CompletionItem("./"));
+            completions.push(new vscode.CompletionItem("../"));
+        } 
+        
+        // MOOSE object name completions after 'type ='
+        if (document.lineAt(position.line).text.trim().match("type*")) {
+            // TODO MOOSE objects autocomplete could also be based on current block
+            for (let uri of this.moose_objects) {
+                var path = pathparse.parse(uri.fsPath);
+                completions.push(new vscode.CompletionItem(" "+path.name, vscode.CompletionItemKind.Class));
+            }
+        }
+
+        // new vscode.CompletionItem("active = ''"),  
+        // TODO if `active` present in block, dim out non-active sub-blocks or action to fold them?
+
+        return completions;
+    }
+
+    public updateMooseObjects() {
+        // indicate updating in status bar
+        var sbar = vscode.window.setStatusBarMessage("Updating Autocompletion Table"); 
+        
+        // find moose objects
+        const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
+
+        // build search includes for moose library
+        const findModules = vscode.workspace.getConfiguration('moose.autocomplete').get('modules', []);
+        const findTypes = vscode.workspace.getConfiguration('moose.autocomplete').get('types', []);
+ 
+        let includePaths: String[] = [];
+        for (let type of findTypes) {
+            includePaths.push("**/framework/src/"+type+"/*.C");
+            for (let module of findModules) {
+                includePaths.push("**/modules/"+module+"/src/"+type+"/*.C");
+            }
+        }
+
+        // include user defined objects
+        const findOthers = vscode.workspace.getConfiguration('moose.autocomplete').get('other', []);
+        for (let other of findOthers) {
+            includePaths.push(other);
+        }
+         
+        var exclude = '';
+        if (ignorePaths) {
+            exclude = `{${ignorePaths.join(',')}}`;
+        }
+        var include = '';
+        if (includePaths) {
+            include = `{${includePaths.join(',')}}`;
+        }
+        // console.log(include);
+
+        const uri = findFilesInWorkspace(include, exclude, 100000);
+
+        uri.then(
+            uris_found => {
+                // for (var i = 0; i < uris_found.length; i++) {
+                //     console.log(uris_found[i].fsPath);
+                // }
+                this.moose_objects = uris_found;
+            }
+            );
+
+        sbar.dispose();
+    }
+}
 
 class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     public provideDocumentSymbols(document: vscode.TextDocument,

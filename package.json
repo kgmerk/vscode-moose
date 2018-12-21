@@ -1,6 +1,6 @@
 {
     "name": "moose",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "displayName": "MOOSE for VSCode",
     "title": "MOOSE for VSCode",
     "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
@@ -37,9 +37,46 @@
                     "type": "array",
                     "items": {"type": "string"},
                     "default": [
-                        "**/test/**/*", "**/.git/**/*"
+                        "**/test/**/*", 
+                        "**/examples/**/*",
+                        "**/tutorials/**/*",
+                        "**/.git/**/*", 
+                        "**/node_modules/**/*",
+                        "**/libmesh/**/*",
+                        "**/main.C"
                     ],
                     "description": "Specifies the folder regexes to ignore when searching for object definitions"
+                },
+                "moose.autocomplete.modules": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [
+                        "phase_field"
+                    ],
+                    "description": "Specifies the moose module folders to search in for autocomplete Moose Objects (**/modules/<MODULE>/src/<TYPE>/*.C)"
+                },
+                "moose.autocomplete.types": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [
+                        "auxkernels",
+                        "kernels",
+                        "materials",
+                        "postprocessors",
+                        "vectorpostprocessors",
+                        "bcs",
+                        "ics",
+                        "mesh"
+                    ],
+                    "description": "Specifies the src subfolders to search in for autocomplete Moose Objects (**/framework/src/<TYPE>/*.C)"
+                },
+                "moose.autocomplete.other": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [
+                        "src/**/*.C"
+                    ],
+                    "description": "Specifies other regexes to search in for autocomplete Moose Objects"
                 }
             }
         },
@@ -81,6 +118,7 @@
         "typescript": "^3.1.4",
         "vscode": "^1.1.25",
         "tslint": "^5.8.0",
+        "path-parse": "^1.0.6",
         "@types/node": "^8.10.25",
         "@types/mocha": "^2.2.42"
     }
