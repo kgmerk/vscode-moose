@@ -15,6 +15,14 @@ Github Repo: https://github.com/chrisjsewell/vscode-moose
 - Find/Peek All References to Variables
 - Main/Sub-Block snippets
 
+### Autocomplete
+
+![Autocomplete](images/autocomplete.gif)
+
+### Find/Peek All References
+
+![Find/Peek All References](images/find_all_references.gif)
+
 ## How to install from Marketplace
 
 This extension is hosted at Visual Studio Marketplace
@@ -32,4 +40,8 @@ Initial release, including syntax colouring, code folding and outline view
 
 ### 0.0.2
 
-Fix bug for Sub-Block names containing _
+Fixed bug for Sub-Block names containing _
+
+### 0.1.0
+
+Added Autocomplete block names, Find/Peek All References to Variables, and Main/Sub-Block snippets
