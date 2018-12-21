@@ -118,7 +118,7 @@ class DefinitionProvider implements vscode.DefinitionProvider {
             });}
     }
 
-// TODO implement change all occurences reference names
+// TODO implement change all occurences reference names; difficult because would have to account for when they are used in functions, etc
 
 class ReferenceProvider implements vscode.ReferenceProvider {
     public provideReferences(
@@ -175,6 +175,8 @@ class ReferenceProvider implements vscode.ReferenceProvider {
                     continue;
                 }
 
+                // TODO account for if quoted string is continued over multiple lines
+
                 // get right side of equals
                 if (!line_text.includes("=")) {
                     continue;
@@ -205,6 +207,7 @@ class ReferenceProvider implements vscode.ReferenceProvider {
                         }
                 }
                 }
+                // TODO find reference when used in a function
 
             }
             resolve(results);
