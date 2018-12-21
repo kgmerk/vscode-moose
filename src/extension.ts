@@ -50,6 +50,7 @@ export function deactivate() {
 
 export default async function findFilesInWorkspace(include: string, exclude = '', maxResults = 2) {
     
+    // TODO exclude whole workspace folders
     const foundFiles = await vscode.workspace.findFiles(
         include,
         exclude,
@@ -333,7 +334,9 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
            
             for (var i = 0; i < document.lineCount; i++) {
                 var line = document.lineAt(i);
-                var text = line.text.trim();
+
+                // remove comments
+                var text = line.text.trim().split("#")[0].trim();
 
                 if (head1_regex.test(text)) {
 
