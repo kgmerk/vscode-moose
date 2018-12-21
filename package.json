@@ -1,6 +1,6 @@
 {
     "name": "moose",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "displayName": "MOOSE for VSCode",
     "title": "MOOSE for VSCode",
     "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
