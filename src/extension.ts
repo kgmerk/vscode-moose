@@ -20,7 +20,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(disposable);
 
-    var moose_selector = {language: "moose"};
+    var moose_selector = {scheme: 'file', language: "moose"};
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
@@ -75,14 +75,17 @@ class DefinitionProvider implements vscode.DefinitionProvider {
                 }
                 let word_text = document.getText(wordRange);
 
-                // TODO read ignorePaths and includePaths from configuration 
-                const ignorePaths = ['node_modules/**/*', '.git/**/*'];
+                const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
+                var exclude = '';
+                if (ignorePaths) {
+                    var exclude = `{${ignorePaths.join(',')}}`;
+                }
                 const includePaths = [
                     '**/src/**/'+word_text+'.C'
                 ];
                 
                 // TODO search outside workspace
-                const uri = findFilesInWorkspace(`{${includePaths.join(',')}}`, `{${ignorePaths.join(',')}}`);
+                const uri = findFilesInWorkspace(`{${includePaths.join(',')}}`, exclude);
 
                 uri.then(
                     uris_found => {

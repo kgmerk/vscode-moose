@@ -25,11 +25,15 @@ and initialisations (as sub-blocks) in Variables/AuxVariables.
 
 ### GoTo/Peek Definitions
 
-Attempts to find a file in the current workspace, matching the regex: `**/src/**/{ObjectName}.C`.
+Attempts to find a file in the current workspace, matching the regex: `**/src/**/{ObjectName}.C`,
+and ignoring specified folders.
+
+![Go To/Peek Definitions](images/peek_definitions.gif)
+
 Note that multiple folders can be added to a workspace by: `File -> Add Folder To Workspace...`.
 In this manner, you can find definitions from both your working/app folder and the main moose library.
 
-![Go To/Peek Definitions](images/peek_definitions.gif)
+Ignored folder regexes can be configured in `Preferences -> Settings`: `moose.definitions.ignore`.
 
 The C/C++ extension is used for syntax highlighting of the C file.
 

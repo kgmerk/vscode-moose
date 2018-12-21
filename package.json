@@ -29,6 +29,20 @@
     ],
     "main": "./out/extension",
     "contributes": {
+        "configuration": {
+            "type": "object",
+            "title": "Moose configuration",
+            "properties": {
+                "moose.definitions.ignore": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [
+                        "**/test/**/*", "**/.git/**/*"
+                    ],
+                    "description": "Specifies the folder regexes to ignore when searching for object definitions"
+                }
+            }
+        },
         "commands": [
             {
             "command": "extension.sayHello",
