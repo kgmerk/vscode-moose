@@ -11,17 +11,33 @@ Github Repo: https://github.com/chrisjsewell/vscode-moose
 - Syntax Highlighting
 - Input Block Folding
 - Input Blocks Outline View
+- 'Find'/'Peek' All References to Variables
+- 'GoTo'/'Peek' Definitions of Moose Objects
 - Autocomplete block names
-- Find/Peek All References to Variables
 - Main/Sub-Block snippets
-
-### Autocomplete
-
-![Autocomplete](images/autocomplete.gif)
 
 ### Find/Peek All References
 
+Looks for all references on the right side of `=` assignments,
+and initialisations (as sub-blocks) in Variables/AuxVariables.
+
 ![Find/Peek All References](images/find_all_references.gif)
+
+### GoTo/Peek Definitions
+
+Attempts to find a file in the current workspace, matching the regex: `**/src/**/{ObjectName}.C`.
+Note that multiple folders can be added to a workspace by: `File -> Add Folder To Workspace...`.
+In this manner, you can find definitions from both your working/app folder and the main moose library.
+
+![Go To/Peek Definitions](images/peek_definitions.gif)
+
+The C/C++ extension is used for syntax highlighting of the C file.
+
+### Autocomplete and Snippets
+
+Provides autocomplete suggestions for main blocks and snippets for sub-blocks.
+
+![Autocomplete](images/autocomplete.gif)
 
 ## How to install from Marketplace
 
@@ -45,3 +61,7 @@ Fixed bug for Sub-Block names containing _
 ### 0.1.0
 
 Added Autocomplete block names, Find/Peek All References to Variables, and Main/Sub-Block snippets
+
+### 0.2.0
+
+Added syntax colouring of moose objects and 'Go To'/'Peek' Definitions

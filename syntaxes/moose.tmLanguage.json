@@ -61,6 +61,12 @@
 		},
 		{	"name": "constant.numeric.integer.decimal.moose",
 			"match": "\b([1-9]+[0-9]*|0)"
+		},
+		{
+			"match": "(type = )(.*)",
+			"captures": {
+				"2": {"name": "support.class.moose"}
+			}
 		}
 	],
 	"repository": {

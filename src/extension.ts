@@ -2,6 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { FILE } from 'dns';
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -11,9 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
     // This line of code will only be executed once when your extension is activated
     // console.log('Congratulations, your extension "moose" is now active!');
 
-    // The command has been defined in the package.json file
-    // Now provide the implementation of the command with  registerCommand
-    // The commandId parameter must match the command field in package.json
+    // TODO delete sayHello command
     let disposable = vscode.commands.registerCommand('extension.sayHello', () => {
         // The code you place here will be executed every time your command is executed
         // Display a message box to the user
@@ -35,14 +34,82 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.languages.registerReferenceProvider(
             moose_selector, new ReferenceProvider()));
 
+    context.subscriptions.push(
+        vscode.languages.registerDefinitionProvider(
+            moose_selector, new DefinitionProvider()));
+
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {
 }
 
-// TODO refactor reference names
-// TODO find src/include file of type = <NAME>
+export default async function findFilesInWorkspace(include: string, exclude = '', maxResults = 2) {
+    
+    const foundFiles = await vscode.workspace.findFiles(
+        include,
+        exclude,
+        maxResults,
+    );
+    return foundFiles;
+}
+
+class DefinitionProvider implements vscode.DefinitionProvider {
+    public provideDefinition(
+        document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
+        Thenable<vscode.Location> {
+            return this.doFindDefinition(document, position, token);
+        }
+        private doFindDefinition(
+            document: vscode.TextDocument, position: vscode.Position, 
+            token: vscode.CancellationToken): Thenable<vscode.Location> {
+            return new Promise<vscode.Location>((resolve, reject) => {
+                let wordRange = document.getWordRangeAtPosition(position);
+            
+                // ignore if empty
+                if (!wordRange) {
+                    //TODO how to show error message at cursor position?
+                    vscode.window.showWarningMessage("empty string not definable");
+                    reject("empty string not definable");
+                    return;
+                }
+                let word_text = document.getText(wordRange);
+
+                // TODO read ignorePaths and includePaths from configuration 
+                const ignorePaths = ['node_modules/**/*', '.git/**/*'];
+                const includePaths = [
+                    '**/src/**/'+word_text+'.C'
+                ];
+                
+                // TODO search outside workspace
+                const uri = findFilesInWorkspace(`{${includePaths.join(',')}}`, `{${ignorePaths.join(',')}}`);
+
+                uri.then(
+                    uris_found => {
+                        
+                        if (uris_found.length === 0) {
+                            reject("could not find declaration");
+                            return;
+                        }
+                        if (uris_found.length > 1) {
+                            reject("multiple declarations found");
+                            return;
+                        }
+
+                        var location = new vscode.Location(
+                            uris_found[0],
+                            new vscode.Position(0, 0));
+                        resolve(location);
+                    },
+                    failure => {
+                        reject("file finder failed");
+                    }
+                );
+
+            });}
+    }
+
+// TODO implement change all occurences reference names
 
 class ReferenceProvider implements vscode.ReferenceProvider {
     public provideReferences(
@@ -61,9 +128,10 @@ class ReferenceProvider implements vscode.ReferenceProvider {
             // ignore if empty
 			if (!wordRange) {
                 //TODO how to show error message at cursor position?
-                vscode.window.showWarningMessage("empty string not referencable");
+                // vscode.window.showWarningMessage("empty string not referencable");
                 // console.log("empty string not referencable");
-                return reject("empty string not referencable");
+                reject("empty string not referencable");
+                
             }
             let word_text = document.getText(wordRange);
 
@@ -71,9 +139,10 @@ class ReferenceProvider implements vscode.ReferenceProvider {
             if (!isNaN(Number(word_text))){
                 // return resolve([]);
                 //TODO how to show error message at cursor position?
-                vscode.window.showWarningMessage("numbers are not referencable");
+                // vscode.window.showWarningMessage("numbers are not referencable");
                 // console.log("numbers are not referencable");
-                return reject("numbers are not referencable");
+                reject("numbers are not referencable");
+                
             }
 
             let results: vscode.Location[] = [];
