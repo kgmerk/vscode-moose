@@ -28,7 +28,7 @@
 		{	"name": "comment.line.number-sign.moose",
 			"begin": "#",
 			"end": "\n",
-			"beginCaptures": { "0": { "name": "punctuation.definition.comment.yaml" }}
+			"beginCaptures": { "0": { "name": "punctuation.definition.comment.moose" }}
 		},
 		{	"name": "markup.heading.1.moose",
 			"begin": "\\[[a-zA-Z0-9]+",
@@ -54,13 +54,17 @@
 			"match": "(?<=[^[:alnum:]_])(?i:(\\.\\d+(e[\\-\\+]?\\d+)?))"
 		},
 		{	"name": "constant.numeric.float.moose",
-			"match": "\b(?i:(\\d+e[\\-\\+]?\\d+))"
+			"match": "\\b(?i:(\\d+e[\\-\\+]?\\d+))"
 		},
 		{	"name": "constant.numeric.integer.decimal.long.moose",
-			"match": "\b(?i:([1-9]+[0-9]*|0)L)"
+			"match": "\\b(?i:([1-9]+[0-9]*|0)L)"
 		},
 		{	"name": "constant.numeric.integer.decimal.moose",
-			"match": "\b([1-9]+[0-9]*|0)"
+			"match": "\\b([1-9]+[0-9]*|0)"
+		},
+		{
+			"name": "constant.language.moose",
+			"match": "\\b(true|false)\\b"
 		},
 		{
 			"match": "(type = )(.*)",
