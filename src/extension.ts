@@ -27,10 +27,13 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(config_change);
     let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {moose_objects.updateMooseObjects();});
     context.subscriptions.push(workspace_change);
-    let docclosed_change = vscode.workspace.onDidCloseTextDocument(event => {moose_objects.updateMooseObjects();});
-    context.subscriptions.push(docclosed_change);
-    let docopened_change = vscode.workspace.onDidOpenTextDocument(event => {moose_objects.updateMooseObjects();});
-    context.subscriptions.push(docopened_change);
+    // let docclosed_change = vscode.workspace.onDidCloseTextDocument(event => {moose_objects.updateMooseObjects();});
+    // context.subscriptions.push(docclosed_change);
+    // let docopened_change = vscode.workspace.onDidOpenTextDocument(event => {moose_objects.updateMooseObjects();});
+    // context.subscriptions.push(docopened_change);
+    let fileSystemWatcher = vscode.workspace.createFileSystemWatcher('**', false, true, false);
+    context.subscriptions.push(fileSystemWatcher.onDidCreate((filePath) => {moose_objects.updateMooseObjects();}));
+    context.subscriptions.push(fileSystemWatcher.onDidDelete((filePath) => {moose_objects.updateMooseObjects();}));
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
