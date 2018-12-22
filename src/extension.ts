@@ -23,8 +23,11 @@ export function activate(context: vscode.ExtensionContext) {
     var moose_selector = {scheme: 'file', language: "moose"};
 
     var autocompletion = new CompletionItemProvider();
+    var hover = new HoverProvider();
     // TODO how to trigger updateMooseObjects if files change
     autocompletion.updateMooseObjects();
+    hover.updateMooseObjects();
+    // TODO should't search for moose objects twice; use external function then pass list to update methods
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
@@ -41,6 +44,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider(
             moose_selector, new DefinitionProvider()));
+
+    context.subscriptions.push(
+        vscode.languages.registerHoverProvider(
+            moose_selector, hover));           
 
 }
 
@@ -83,7 +90,7 @@ class DefinitionProvider implements vscode.DefinitionProvider {
                 const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
                 var exclude = '';
                 if (ignorePaths) {
-                    var exclude = `{${ignorePaths.join(',')}}`;
+                    exclude = `{${ignorePaths.join(',')}}`;
                 }
                 const includePaths = [
                     '**/src/**/'+word_text+'.C'
@@ -117,6 +124,130 @@ class DefinitionProvider implements vscode.DefinitionProvider {
 
             });}
     }
+
+// TODO lots of overlap in code (e.g. for finding defintions in hover and declaration providers); consolidate into external functions
+// TODO can providers share a resource (i.e. definition uri list)
+
+class HoverProvider implements vscode.HoverProvider {
+
+    private moose_objects:  { [id: string] : vscode.Uri; };
+    constructor(){
+        this.moose_objects = {};
+    }
+
+    public provideHover(
+        document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
+        Thenable<vscode.Hover> {
+            return this.doFindDefinition(document, position, token);
+    }
+
+    public updateMooseObjects() {
+        // indicate updating in status bar
+        var sbar = vscode.window.setStatusBarMessage("Updating Autocompletion Table"); 
+        
+        // find moose objects
+        const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
+
+        // build search includes for moose library
+        const findModules = vscode.workspace.getConfiguration('moose.autocomplete').get('modules', []);
+        const findTypes = vscode.workspace.getConfiguration('moose.autocomplete').get('types', []);
+ 
+        let includePaths: String[] = [];
+        for (let type of findTypes) {
+            includePaths.push("**/framework/src/"+type+"/*.C");
+            for (let module of findModules) {
+                includePaths.push("**/modules/"+module+"/src/"+type+"/*.C");
+            }
+        }
+
+        // include user defined objects
+        const findOthers = vscode.workspace.getConfiguration('moose.autocomplete').get('other', []);
+        for (let other of findOthers) {
+            includePaths.push(other);
+        }
+         
+        var exclude = '';
+        if (ignorePaths) {
+            exclude = `{${ignorePaths.join(',')}}`;
+        }
+        var include = '';
+        if (includePaths) {
+            include = `{${includePaths.join(',')}}`;
+        }
+        // console.log(include);
+
+        const uri = findFilesInWorkspace(include, exclude, 100000);
+
+        uri.then(
+            uris_found => {
+                for (let uri of uris_found) {
+                    const path = pathparse.parse(uri.fsPath);
+                    // TODO test key doesn't already exist
+                    this.moose_objects[path.name] = uri;
+                }
+            }
+            );
+
+        sbar.dispose();
+    }
+
+    private doFindDefinition(
+        document: vscode.TextDocument, position: vscode.Position, 
+        token: vscode.CancellationToken): Thenable<vscode.Hover> {
+		return new Promise<vscode.Hover>((resolve, reject) => {
+
+            if (!document.lineAt(position.line).text.trim().match("type*=*")) {
+                reject('no definition available');
+                return;
+            }
+
+            let wordRange = document.getWordRangeAtPosition(position);
+            
+            // ignore if empty
+            if (!wordRange) {
+                reject("empty string not definable");
+                return;
+            }
+            let word_text = document.getText(wordRange);
+            if (word_text === "type" || word_text === "=" || word_text === "") {
+                reject('no definition available');
+                return;
+            }
+
+            if (word_text in this.moose_objects) {
+                const uri = this.moose_objects[word_text];
+                // want to find in file `params.addClassDescription("class description")`
+                vscode.workspace.openTextDocument(uri).then((objdoc) => {
+                    
+                    const text = objdoc.getText();
+                    let search = text.search("addClassDescription\\(");
+                    
+                    if (search === -1) {
+                        const results = new vscode.Hover("No Class Description Available");
+                        resolve(results);
+                        // reject('no definition description available');
+                    } else {
+                        let descript = text.substring(search+20, text.length-1).trimLeft();
+                        search = descript.search('\\);');
+                        if (search === -1) {
+                            const results = new vscode.Hover("No Class Description Available");
+                            resolve(results);                               
+                        } else {
+                            descript = descript.substr(1, search).trimRight();
+                            descript = descript.substr(0, descript.length-2).replace(/("\s*\n\s*"|"\s*\r\s*")/gm,"");
+                            const results = new vscode.Hover(descript);
+                            resolve(results);
+                        }
+                    }
+                });
+            } else {
+                // reject('no definition description available');
+                const results = new vscode.Hover("No Class Description Available");
+                resolve(results);
+            }
+            
+        });}
+}
 
 // TODO implement change all occurences reference names; difficult because would have to account for when they are used in functions, etc
 
@@ -261,7 +392,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
         } 
         
         // MOOSE object name completions after 'type ='
-        if (document.lineAt(position.line).text.trim().match("type*")) {
+        if (document.lineAt(position.line).text.trim().match("type*=*")) {
             // TODO MOOSE objects autocomplete could also be based on current block
             for (let uri of this.moose_objects) {
                 var path = pathparse.parse(uri.fsPath);
