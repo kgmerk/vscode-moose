@@ -20,18 +20,21 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(disposable);
 
-    var moose_selector = {scheme: 'file', language: "moose"};
+    var moose_selector = { scheme: 'file', language: "moose" };
 
-    var autocompletion = new CompletionItemProvider();
-    var hover = new HoverProvider();
-    // TODO how to trigger updateMooseObjects if files change
-    autocompletion.updateMooseObjects();
-    hover.updateMooseObjects();
-    // TODO should't search for moose objects twice; use external function then pass list to update methods
+    let moose_objects = new MooseObjects();
+    let config_change = vscode.workspace.onDidChangeConfiguration(event => {moose_objects.updateMooseObjects();});
+    context.subscriptions.push(config_change);
+    let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {moose_objects.updateMooseObjects();});
+    context.subscriptions.push(workspace_change);
+    let docclosed_change = vscode.workspace.onDidCloseTextDocument(event => {moose_objects.updateMooseObjects();});
+    context.subscriptions.push(docclosed_change);
+    let docopened_change = vscode.workspace.onDidOpenTextDocument(event => {moose_objects.updateMooseObjects();});
+    context.subscriptions.push(docopened_change);
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
-            moose_selector, autocompletion, "[", "="));
+            moose_selector, new CompletionItemProvider(moose_objects), "[", "="));
 
     context.subscriptions.push(
         vscode.languages.registerDocumentSymbolProvider(
@@ -47,7 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(
-            moose_selector, hover));           
+            moose_selector, new HoverProvider(moose_objects)));
 
 }
 
@@ -56,7 +59,7 @@ export function deactivate() {
 }
 
 export default async function findFilesInWorkspace(include: string, exclude = '', maxResults = 2) {
-    
+
     // TODO exclude whole workspace folders
     const foundFiles = await vscode.workspace.findFiles(
         include,
@@ -66,97 +69,48 @@ export default async function findFilesInWorkspace(include: string, exclude = ''
     return foundFiles;
 }
 
-class DefinitionProvider implements vscode.DefinitionProvider {
-    public provideDefinition(
-        document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
-        Thenable<vscode.Location> {
-            return this.doFindDefinition(document, position, token);
-        }
-        private doFindDefinition(
-            document: vscode.TextDocument, position: vscode.Position, 
-            token: vscode.CancellationToken): Thenable<vscode.Location> {
-            return new Promise<vscode.Location>((resolve, reject) => {
-                let wordRange = document.getWordRangeAtPosition(position);
-            
-                // ignore if empty
-                if (!wordRange) {
-                    //TODO how to show error message at cursor position?
-                    vscode.window.showWarningMessage("empty string not definable");
-                    reject("empty string not definable");
-                    return;
-                }
-                let word_text = document.getText(wordRange);
+// this class handles maintaining a list of MOOSE object URI's
+class MooseObjects {
 
-                const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
-                var exclude = '';
-                if (ignorePaths) {
-                    exclude = `{${ignorePaths.join(',')}}`;
-                }
-                const includePaths = [
-                    '**/src/**/'+word_text+'.C'
-                ];
-                
-                // TODO search outside workspace
-                const uri = findFilesInWorkspace(`{${includePaths.join(',')}}`, exclude);
-
-                uri.then(
-                    uris_found => {
-                        
-                        if (uris_found.length === 0) {
-                            reject("could not find declaration");
-                            return;
-                        }
-                        if (uris_found.length > 1) {
-                            vscode.window.showWarningMessage("multiple declarations found");
-                            reject("multiple declarations found");
-                            return;
-                        }
-
-                        var location = new vscode.Location(
-                            uris_found[0],
-                            new vscode.Position(0, 0));
-                        resolve(location);
-                    },
-                    failure => {
-                        reject("file finder failed");
-                    }
-                );
-
-            });}
-    }
-
-// TODO lots of overlap in code (e.g. for finding defintions in hover and declaration providers); consolidate into external functions
-// TODO can providers share a resource (i.e. definition uri list)
-
-class HoverProvider implements vscode.HoverProvider {
-
-    private moose_objects:  { [id: string] : vscode.Uri; };
-    constructor(){
+    private moose_objects: { [id: string]: vscode.Uri; };
+    constructor() {
         this.moose_objects = {};
+        this.updateMooseObjects();
     }
+    public getMooseObjectsList() {
+        let moose_list: vscode.Uri[] = [];
+        for (let key in this.moose_objects) {
+            moose_list.push(this.moose_objects[key]);
+        }
 
-    public provideHover(
-        document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
-        Thenable<vscode.Hover> {
-            return this.doFindDefinition(document, position, token);
+        return moose_list;
+    }
+    public getMooseObjectsDict() {
+        return this.moose_objects;
     }
 
     public updateMooseObjects() {
+
+        // console.log("called updateMooseObjects");
+
+        // clear existing moose_objects
+        this.moose_objects = {};
+
         // indicate updating in status bar
-        var sbar = vscode.window.setStatusBarMessage("Updating Autocompletion Table"); 
-        
+        var sbar = vscode.window.setStatusBarMessage("Updating Autocompletion Table");
+
         // find moose objects
         const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
 
         // build search includes for moose library
         const findModules = vscode.workspace.getConfiguration('moose.autocomplete').get('modules', []);
         const findTypes = vscode.workspace.getConfiguration('moose.autocomplete').get('types', []);
- 
+
         let includePaths: String[] = [];
         for (let type of findTypes) {
-            includePaths.push("**/framework/src/"+type+"/*.C");
+            includePaths.push("**/framework/src/" + type + "/*.C");
             for (let module of findModules) {
-                includePaths.push("**/modules/"+module+"/src/"+type+"/*.C");
+                includePaths.push("**/modules/" + module + "/src/" + type + "/*.C");
             }
         }
 
@@ -165,7 +119,7 @@ class HoverProvider implements vscode.HoverProvider {
         for (let other of findOthers) {
             includePaths.push(other);
         }
-         
+
         var exclude = '';
         if (ignorePaths) {
             exclude = `{${ignorePaths.join(',')}}`;
@@ -174,7 +128,6 @@ class HoverProvider implements vscode.HoverProvider {
         if (includePaths) {
             include = `{${includePaths.join(',')}}`;
         }
-        // console.log(include);
 
         const uri = findFilesInWorkspace(include, exclude, 100000);
 
@@ -186,15 +139,92 @@ class HoverProvider implements vscode.HoverProvider {
                     this.moose_objects[path.name] = uri;
                 }
             }
-            );
+        );
+
+        // console.log("finished updateMooseObjects");
 
         sbar.dispose();
+
+    }
+}
+
+class DefinitionProvider implements vscode.DefinitionProvider {
+    public provideDefinition(
+        document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
+        Thenable<vscode.Location> {
+        return this.doFindDefinition(document, position, token);
+    }
+    private doFindDefinition(
+        document: vscode.TextDocument, position: vscode.Position,
+        token: vscode.CancellationToken): Thenable<vscode.Location> {
+        return new Promise<vscode.Location>((resolve, reject) => {
+            let wordRange = document.getWordRangeAtPosition(position);
+
+            // ignore if empty
+            if (!wordRange) {
+                //TODO how to show error message at cursor position?
+                vscode.window.showWarningMessage("empty string not definable");
+                reject("empty string not definable");
+                return;
+            }
+            let word_text = document.getText(wordRange);
+
+            const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
+            var exclude = '';
+            if (ignorePaths) {
+                exclude = `{${ignorePaths.join(',')}}`;
+            }
+            const includePaths = [
+                '**/src/**/' + word_text + '.C'
+            ];
+
+            // TODO search outside workspace
+            const uri = findFilesInWorkspace(`{${includePaths.join(',')}}`, exclude);
+
+            uri.then(
+                uris_found => {
+
+                    if (uris_found.length === 0) {
+                        reject("could not find declaration");
+                        return;
+                    }
+                    if (uris_found.length > 1) {
+                        vscode.window.showWarningMessage("multiple declarations found");
+                        reject("multiple declarations found");
+                        return;
+                    }
+
+                    var location = new vscode.Location(
+                        uris_found[0],
+                        new vscode.Position(0, 0));
+                    resolve(location);
+                },
+                failure => {
+                    reject("file finder failed");
+                }
+            );
+
+        });
+    }
+}
+
+class HoverProvider implements vscode.HoverProvider {
+
+    private moose_objects: MooseObjects;
+    constructor(moose_objects: MooseObjects) {
+        this.moose_objects = moose_objects;
+    }
+
+    public provideHover(
+        document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
+        Thenable<vscode.Hover> {
+        return this.doFindDefinition(document, position, token);
     }
 
     private doFindDefinition(
-        document: vscode.TextDocument, position: vscode.Position, 
+        document: vscode.TextDocument, position: vscode.Position,
         token: vscode.CancellationToken): Thenable<vscode.Hover> {
-		return new Promise<vscode.Hover>((resolve, reject) => {
+        return new Promise<vscode.Hover>((resolve, reject) => {
 
             if (!document.lineAt(position.line).text.trim().match("type*=*")) {
                 reject('no definition available');
@@ -202,7 +232,7 @@ class HoverProvider implements vscode.HoverProvider {
             }
 
             let wordRange = document.getWordRangeAtPosition(position);
-            
+
             // ignore if empty
             if (!wordRange) {
                 reject("empty string not definable");
@@ -214,28 +244,30 @@ class HoverProvider implements vscode.HoverProvider {
                 return;
             }
 
-            if (word_text in this.moose_objects) {
-                const uri = this.moose_objects[word_text];
+            let moose_dict = this.moose_objects.getMooseObjectsDict();
+
+            if (word_text in moose_dict) {
+                const uri = moose_dict[word_text];
                 // want to find in file `params.addClassDescription("class description")`
                 vscode.workspace.openTextDocument(uri).then((objdoc) => {
-                    
+
                     const text = objdoc.getText();
                     let search = text.search("addClassDescription\\(");
-                    
+
                     if (search === -1) {
                         const results = new vscode.Hover("No Class Description Available");
                         resolve(results);
                         // reject('no definition description available');
                     } else {
-                        let descript = text.substring(search+20, text.length-1).trimLeft();
+                        let descript = text.substring(search + 20, text.length - 1).trimLeft();
                         search = descript.search('\\);');
                         if (search === -1) {
                             const results = new vscode.Hover("No Class Description Available");
-                            resolve(results);                               
+                            resolve(results);
                         } else {
                             descript = descript.substr(1, search).trimRight();
-                            descript = descript.substr(0, descript.length-2).replace(/("\s*\n\s*"|"\s*\r\s*")/gm,"");
-                            const results = new vscode.Hover(descript);
+                            descript = descript.substr(0, descript.length - 2).replace(/("\s*\n\s*"|"\s*\r\s*")/gm, "");
+                            const results = new vscode.Hover(new vscode.MarkdownString("**"+word_text+"**:\n"+descript));
                             resolve(results);
                         }
                     }
@@ -245,8 +277,9 @@ class HoverProvider implements vscode.HoverProvider {
                 const results = new vscode.Hover("No Class Description Available");
                 resolve(results);
             }
-            
-        });}
+
+        });
+    }
 }
 
 // TODO implement change all occurences reference names; difficult because would have to account for when they are used in functions, etc
@@ -255,34 +288,34 @@ class ReferenceProvider implements vscode.ReferenceProvider {
     public provideReferences(
         document: vscode.TextDocument, position: vscode.Position,
         options: { includeDeclaration: boolean }, token: vscode.CancellationToken): Thenable<vscode.Location[]> {
-            return this.doFindReferences(document, position, options, token);
+        return this.doFindReferences(document, position, options, token);
     }
 
     private doFindReferences(
-        document: vscode.TextDocument, position: vscode.Position, 
+        document: vscode.TextDocument, position: vscode.Position,
         options: { includeDeclaration: boolean }, token: vscode.CancellationToken): Thenable<vscode.Location[]> {
-		return new Promise<vscode.Location[]>((resolve, reject) => {
-			// get current word
+        return new Promise<vscode.Location[]>((resolve, reject) => {
+            // get current word
             let wordRange = document.getWordRangeAtPosition(position);
-            
+
             // ignore if empty
-			if (!wordRange) {
+            if (!wordRange) {
                 //TODO how to show error message at cursor position?
                 // vscode.window.showWarningMessage("empty string not referencable");
                 // console.log("empty string not referencable");
                 reject("empty string not referencable");
-                
+
             }
             let word_text = document.getText(wordRange);
 
             // ignore if is a number
-            if (!isNaN(Number(word_text))){
+            if (!isNaN(Number(word_text))) {
                 // return resolve([]);
                 //TODO how to show error message at cursor position?
                 // vscode.window.showWarningMessage("numbers are not referencable");
                 // console.log("numbers are not referencable");
                 reject("numbers are not referencable");
-                
+
             }
 
             let results: vscode.Location[] = [];
@@ -290,7 +323,7 @@ class ReferenceProvider implements vscode.ReferenceProvider {
 
             for (var i = 0; i < document.lineCount; i++) {
                 var line = document.lineAt(i);
-                
+
                 // remove comments
                 var line_text = line.text.trim().split("#")[0].trim();
 
@@ -301,7 +334,7 @@ class ReferenceProvider implements vscode.ReferenceProvider {
                 if (line_text === "[]") {
                     in_variables = false;
                 }
-                if (in_variables && line_text === "[./"+word_text+"]"){
+                if (in_variables && line_text === "[./" + word_text + "]") {
                     results.push(new vscode.Location(document.uri, line.range));
                     continue;
                 }
@@ -313,7 +346,7 @@ class ReferenceProvider implements vscode.ReferenceProvider {
                     continue;
                 }
                 var larray = line_text.split("=");
-                if (larray.length < 2){
+                if (larray.length < 2) {
                     continue;
                 }
                 var equals_text = larray[1].trim();
@@ -336,21 +369,22 @@ class ReferenceProvider implements vscode.ReferenceProvider {
                             results.push(new vscode.Location(document.uri, line.range));
                             break;
                         }
-                }
+                    }
                 }
                 // TODO find reference when used in a function
 
             }
             resolve(results);
-        });}
+        });
+    }
 }
 
 class CompletionItemProvider implements vscode.CompletionItemProvider {
 
-    private moose_objects: vscode.Uri[];
+    private moose_objects: MooseObjects;
     private moose_blocks: string[];
-    constructor(){
-        this.moose_objects = [];
+    constructor(moose_objects: MooseObjects) {
+        this.moose_objects = moose_objects;
         this.moose_blocks = [
             "GlobalParams",
             "Variables",
@@ -367,14 +401,14 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
             "Executioner",
             "Preconditioning",
             "Outputs"
-             ];
-        
+        ];
+
     }
 
     public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
 
         var completions = [];
-        
+
         // Block name completions after square bracket
         var before_sbracket = false;
         if (position.character !== 0) {
@@ -389,14 +423,15 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
             }
             completions.push(new vscode.CompletionItem("./"));
             completions.push(new vscode.CompletionItem("../"));
-        } 
-        
+        }
+
         // MOOSE object name completions after 'type ='
         if (document.lineAt(position.line).text.trim().match("type*=*")) {
             // TODO MOOSE objects autocomplete could also be based on current block
-            for (let uri of this.moose_objects) {
+            let moose_list = this.moose_objects.getMooseObjectsList();
+            for (let uri of moose_list) {
                 var path = pathparse.parse(uri.fsPath);
-                completions.push(new vscode.CompletionItem(" "+path.name, vscode.CompletionItemKind.Class));
+                completions.push(new vscode.CompletionItem(" " + path.name, vscode.CompletionItemKind.Class));
             }
         }
 
@@ -406,66 +441,18 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
         return completions;
     }
 
-    public updateMooseObjects() {
-        // indicate updating in status bar
-        var sbar = vscode.window.setStatusBarMessage("Updating Autocompletion Table"); 
-        
-        // find moose objects
-        const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
-
-        // build search includes for moose library
-        const findModules = vscode.workspace.getConfiguration('moose.autocomplete').get('modules', []);
-        const findTypes = vscode.workspace.getConfiguration('moose.autocomplete').get('types', []);
- 
-        let includePaths: String[] = [];
-        for (let type of findTypes) {
-            includePaths.push("**/framework/src/"+type+"/*.C");
-            for (let module of findModules) {
-                includePaths.push("**/modules/"+module+"/src/"+type+"/*.C");
-            }
-        }
-
-        // include user defined objects
-        const findOthers = vscode.workspace.getConfiguration('moose.autocomplete').get('other', []);
-        for (let other of findOthers) {
-            includePaths.push(other);
-        }
-         
-        var exclude = '';
-        if (ignorePaths) {
-            exclude = `{${ignorePaths.join(',')}}`;
-        }
-        var include = '';
-        if (includePaths) {
-            include = `{${includePaths.join(',')}}`;
-        }
-        // console.log(include);
-
-        const uri = findFilesInWorkspace(include, exclude, 100000);
-
-        uri.then(
-            uris_found => {
-                // for (var i = 0; i < uris_found.length; i++) {
-                //     console.log(uris_found[i].fsPath);
-                // }
-                this.moose_objects = uris_found;
-            }
-            );
-
-        sbar.dispose();
-    }
 }
 
 class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     public provideDocumentSymbols(document: vscode.TextDocument,
-            token: vscode.CancellationToken): Thenable<vscode.SymbolInformation[]> {
+        token: vscode.CancellationToken): Thenable<vscode.SymbolInformation[]> {
         return new Promise((resolve, reject) => {
             var symbols = [];
             var head1_regex = new RegExp('\\[[_a-zA-Z0-9]+\\]');
             var head2_regex = new RegExp('\\[\\.\\/[_a-zA-Z0-9]+\\]');
             var in_variables = false;
             var kind = null;
-           
+
             for (var i = 0; i < document.lineCount; i++) {
                 var line = document.lineAt(i);
 
@@ -475,7 +462,7 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                 if (head1_regex.test(text)) {
 
                     // Check if in variables block
-                    if (text.substr(1, text.length-2).match('Variables') || text.substr(1, text.length-2).match('AuxVariables')) {
+                    if (text.substr(1, text.length - 2).match('Variables') || text.substr(1, text.length - 2).match('AuxVariables')) {
                         in_variables = true;
                     } else {
                         in_variables = false;
@@ -493,16 +480,16 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                     }
 
                     symbols.push({
-                        name: text.substr(1, text.length-2),
+                        name: text.substr(1, text.length - 2),
                         containerName: "Main Block",
                         kind: vscode.SymbolKind.Field,
-                        location: new vscode.Location(document.uri, 
-                            new vscode.Range(new vscode.Position(line.lineNumber, 1), 
-                            new vscode.Position(last_line.lineNumber, last_line.text.length)))
+                        location: new vscode.Location(document.uri,
+                            new vscode.Range(new vscode.Position(line.lineNumber, 1),
+                                new vscode.Position(last_line.lineNumber, last_line.text.length)))
                     });
                 }
                 if (head2_regex.test(text)) {
- 
+
                     // Find the closing [../]
                     var last_line2 = line;
                     for (var k = i; k < document.lineCount; k++) {
@@ -519,17 +506,17 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                     } else {
                         kind = vscode.SymbolKind.String;
                     }
-                    
+
                     symbols.push({
-                            name: text.substr(3, text.length-4),
-                            containerName: "Sub Block",
-                            kind: kind,
-                            location: new vscode.Location(document.uri, 
-                                new vscode.Range(new vscode.Position(line.lineNumber, 1), 
+                        name: text.substr(3, text.length - 4),
+                        containerName: "Sub Block",
+                        kind: kind,
+                        location: new vscode.Location(document.uri,
+                            new vscode.Range(new vscode.Position(line.lineNumber, 1),
                                 new vscode.Position(last_line2.lineNumber, last_line2.text.length)))
-                            });
+                    });
                 }
-           }
+            }
 
             resolve(symbols);
         });
@@ -546,7 +533,6 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 //             var symbols = [];
 //             var head1_regex = new RegExp('\\[[a-zA-Z0-9]+\\]');
 //             var head2_regex = new RegExp('\\[\\.\\/[a-zA-Z0-9]+\\]');
-           
 //             for (var i = 0; i < document.lineCount; i++) {
 //                 var line = document.lineAt(i);
 //                 var text = line.text.trim();
@@ -577,7 +563,6 @@ class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 //                     });
 //                 }
 //            }
-
 //             resolve(symbols);
 //         });
 //     }
