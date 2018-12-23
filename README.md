@@ -95,3 +95,7 @@ Added MOOSE object autocompletion
 ### 0.4.0
 
 Added MOOSE object hovering
+
+### 0.5.0
+
+Added MOOSE descriptions in autocomplete and auto-update of MOOSE objects
