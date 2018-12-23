@@ -3,6 +3,8 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import * as pathparse from 'path';
+import * as globToregex from 'glob-to-regexp';
+import * as fileread from 'fs';
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -23,17 +25,23 @@ export function activate(context: vscode.ExtensionContext) {
     var moose_selector = { scheme: 'file', language: "moose" };
 
     let moose_objects = new MooseObjects();
-    let config_change = vscode.workspace.onDidChangeConfiguration(event => {moose_objects.updateMooseObjects();});
+    let config_change = vscode.workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration('moose')) {moose_objects.resetMooseObjects();}
+    });
     context.subscriptions.push(config_change);
-    let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {moose_objects.updateMooseObjects();});
+    let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {moose_objects.resetMooseObjects();});
     context.subscriptions.push(workspace_change);
-    // let docclosed_change = vscode.workspace.onDidCloseTextDocument(event => {moose_objects.updateMooseObjects();});
-    // context.subscriptions.push(docclosed_change);
-    // let docopened_change = vscode.workspace.onDidOpenTextDocument(event => {moose_objects.updateMooseObjects();});
-    // context.subscriptions.push(docopened_change);
-    let fileSystemWatcher = vscode.workspace.createFileSystemWatcher('**', false, true, false);
-    context.subscriptions.push(fileSystemWatcher.onDidCreate((filePath) => {moose_objects.updateMooseObjects();}));
-    context.subscriptions.push(fileSystemWatcher.onDidDelete((filePath) => {moose_objects.updateMooseObjects();}));
+    let fileSystemWatcher = vscode.workspace.createFileSystemWatcher('**', false, false, false);
+    context.subscriptions.push(fileSystemWatcher.onDidCreate((filePath) => {
+        moose_objects.addMooseObject(filePath);
+    }));
+    context.subscriptions.push(fileSystemWatcher.onDidChange((filePath) => {
+        moose_objects.removeMooseObject(filePath);
+        moose_objects.addMooseObject(filePath);
+    }));
+    context.subscriptions.push(fileSystemWatcher.onDidDelete((filePath) => {
+        moose_objects.removeMooseObject(filePath);
+    }));
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
@@ -72,14 +80,57 @@ export default async function findFilesInWorkspace(include: string, exclude = ''
     return foundFiles;
 }
 
-// this class handles maintaining a list of MOOSE object URI's
+function extract_classdescript(uri: vscode.Uri, ftype: string = 'utf8') {
+
+    /** NB: originally used 
+     * const descript = await vscode.workspace.openTextDocument(uri).then(docobj => {...});
+     * but this triggered open event(s)
+     */
+
+    function extract(contents: string) {
+        let search = contents.search("addClassDescription\\(");
+        if (search === -1) {
+            return null;
+        }
+        let descript = contents.substring(search + 20, contents.length - 1).trimLeft();
+        search = descript.search('\\);');
+        if (search === -1) {
+            return null;
+        }
+        descript = descript.substr(1, search).trimRight();
+        descript = descript.substr(0, descript.length - 2).replace(/("\s*\n\s*"|"\s*\r\s*")/gm, "");
+
+        return descript;        
+    }
+
+    return new Promise<string|null>(function(resolve, reject){
+        fileread.readFile(uri.fsPath, ftype, (err, content) => {
+            // err ? reject(err) : resolve(data);
+            if (err) {
+                reject(err);
+            }
+            else {
+                let descript = extract(content);
+                resolve(descript);
+            }
+        });
+      });
+}
+
 class MooseObjects {
+    /**
+     * this class handles maintaining a list of MOOSE object URI's
+     */
 
     private moose_objects: { [id: string]: vscode.Uri; };
+    private moose_descripts: { [id: string]: string | null; };
+
     constructor() {
         this.moose_objects = {};
-        this.updateMooseObjects();
+        this.moose_descripts = {};
+        this.resetMooseObjects();
     }
+
     public getMooseObjectsList() {
         let moose_list: vscode.Uri[] = [];
         for (let key in this.moose_objects) {
@@ -92,36 +143,58 @@ class MooseObjects {
         return this.moose_objects;
     }
 
-    public updateMooseObjects() {
+    private extractName(uri: vscode.Uri) {
+        const path = pathparse.parse(uri.fsPath);
+        return path.name;
+    }
+    private logDebug(message: string) {
+        console.log("Moose Objects: " + message);
+    }
+    private logError(message: string) {
+        vscode.window.showWarningMessage("Moose Objects: " + message);
+        console.warn("Moose Objects: " + message);
+    }
 
-        // console.log("called updateMooseObjects");
+    private buildIncludes() {
+       // build search includes for moose library
+       const findModules = vscode.workspace.getConfiguration('moose.autocomplete').get('modules', []);
+       const findTypes = vscode.workspace.getConfiguration('moose.autocomplete').get('types', []);
+
+       let includePaths: string[] = [];
+       for (let type of findTypes) {
+           includePaths.push("**/framework/src/" + type + "/*.C");
+           for (let module of findModules) {
+               includePaths.push("**/modules/" + module + "/src/" + type + "/*.C");
+           }
+       }
+
+       // include user defined objects
+       const findOthers = vscode.workspace.getConfiguration('moose.autocomplete').get('other', []);
+       for (let other of findOthers) {
+           includePaths.push(other);
+       }
+       return includePaths;
+    }
+
+    private buildExcludes() {
+        return vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
+    }
+
+    public resetMooseObjects() {
+
+        this.logDebug("called update");
 
         // clear existing moose_objects
         this.moose_objects = {};
+        this.moose_descripts = {};
 
         // indicate updating in status bar
-        var sbar = vscode.window.setStatusBarMessage("Updating Autocompletion Table");
+        // TODO status bar loading icon that only dissapears after all loaded (asynchronously)
+        var sbar = vscode.window.setStatusBarMessage("Updating MOOSE objects list");
 
         // find moose objects
-        const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
-
-        // build search includes for moose library
-        const findModules = vscode.workspace.getConfiguration('moose.autocomplete').get('modules', []);
-        const findTypes = vscode.workspace.getConfiguration('moose.autocomplete').get('types', []);
-
-        let includePaths: String[] = [];
-        for (let type of findTypes) {
-            includePaths.push("**/framework/src/" + type + "/*.C");
-            for (let module of findModules) {
-                includePaths.push("**/modules/" + module + "/src/" + type + "/*.C");
-            }
-        }
-
-        // include user defined objects
-        const findOthers = vscode.workspace.getConfiguration('moose.autocomplete').get('other', []);
-        for (let other of findOthers) {
-            includePaths.push(other);
-        }
+        const ignorePaths = this.buildExcludes();
+        const includePaths = this.buildIncludes();
 
         var exclude = '';
         if (ignorePaths) {
@@ -136,18 +209,123 @@ class MooseObjects {
 
         uri.then(
             uris_found => {
+                let errors = ["duplicates found; "];
                 for (let uri of uris_found) {
-                    const path = pathparse.parse(uri.fsPath);
-                    // TODO test key doesn't already exist
-                    this.moose_objects[path.name] = uri;
+                    const objname = this.extractName(uri);
+                    if (objname in this.moose_objects){
+                        errors.push(this.moose_objects[objname].fsPath+" & "+uri.fsPath);
+                    } else {
+                        this.moose_objects[objname] = uri;
+                    }
+                }
+                if (errors.length > 1){
+                    this.logError(errors.join("\n"));
                 }
             }
         );
 
-        // console.log("finished updateMooseObjects");
+        uri.then(
+            uris_found => {
+                for (let uri of uris_found) {
+                    const objname = this.extractName(uri);
+                    if (!(objname in this.moose_descripts)){
+                        this.createDescription(uri);
+                    }
+                }
+            }
+        );
 
         sbar.dispose();
 
+    }
+
+    public removeMooseObject(uri: vscode.Uri){
+
+        const objname = this.extractName(uri);
+        if (objname in this.moose_objects) {
+            if (uri.fsPath === this.moose_objects[objname].fsPath) {
+                this.logDebug("removing path "+uri.fsPath);
+                delete this.moose_objects[objname];
+                delete this.moose_descripts[objname];
+            }
+        }
+    }
+
+    public addMooseObject(uri: vscode.Uri){
+        // console.log("trigerred addMooseObject: "+uri.fsPath);
+
+        // we need the path relative to the workspace folder
+        let wrkfolder = vscode.workspace.getWorkspaceFolder(uri);
+        if (!wrkfolder){
+            return;
+        }
+        const path = pathparse.relative(wrkfolder.uri.fsPath, uri.fsPath);
+        
+        let adduri = false;
+
+        for (let inregex of this.buildIncludes()) {
+            let re = globToregex(inregex, {globstar: true});
+            // console.log(String(inregex)+" & "+path+" -> "+String(re.test(path)));
+            if (re.test(path)) {
+                adduri = true;
+                break;
+            }
+        }
+        if (!adduri){
+            return;
+        }
+
+        for (let exregex of this.buildExcludes()) {
+            let re = globToregex(exregex, {globstar: true});
+            // console.log(String(exregex)+" & "+path+" -> "+String(re.test(path)));
+            if (re.test(path)) {
+                adduri = false;
+                break;
+            }
+        }
+
+        if (adduri) {
+            const objname = this.extractName(uri);
+            if (objname in this.moose_objects){
+                this.logError("duplicates found; "+this.moose_objects[objname].fsPath+" & "+uri.fsPath);
+            }
+            this.logDebug("adding path: "+path);
+            this.moose_objects[objname] = uri;
+            this.createDescription(uri);
+        }
+
+        return;
+
+    }
+
+    public createDescription(uri: vscode.Uri){
+        /** return a description of the moose object, based on params.addClassDescription value
+         * if not available, an attempt to read it from the file will be made
+         */
+
+        const objname = this.extractName(uri);
+        var descript: Promise<string|null>;
+
+        if (objname in this.moose_descripts){
+            descript = new Promise((resolve, reject) => {resolve(this.moose_descripts[objname]);});
+            return descript;
+        }
+        descript = extract_classdescript(uri);
+        descript.then(value => this.moose_descripts[objname] = value);
+
+        return descript;
+        
+    }
+
+    public getDescription(uri: vscode.Uri){
+        /** return a description of the moose object, based on params.addClassDescription value
+         * 
+         */
+        const objname = this.extractName(uri);
+        if (objname in this.moose_descripts){
+            return this.moose_descripts[objname];
+        }
+        return;
     }
 }
 
@@ -251,30 +429,23 @@ class HoverProvider implements vscode.HoverProvider {
 
             if (word_text in moose_dict) {
                 const uri = moose_dict[word_text];
-                // want to find in file `params.addClassDescription("class description")`
-                vscode.workspace.openTextDocument(uri).then((objdoc) => {
 
-                    const text = objdoc.getText();
-                    let search = text.search("addClassDescription\\(");
+                let thenable = this.moose_objects.createDescription(uri);
 
-                    if (search === -1) {
-                        const results = new vscode.Hover("No Class Description Available");
-                        resolve(results);
-                        // reject('no definition description available');
-                    } else {
-                        let descript = text.substring(search + 20, text.length - 1).trimLeft();
-                        search = descript.search('\\);');
-                        if (search === -1) {
+                thenable.then(
+                    descript => {
+                        if (descript === null){
+                            // reject('no definition description available');
                             const results = new vscode.Hover("No Class Description Available");
                             resolve(results);
                         } else {
-                            descript = descript.substr(1, search).trimRight();
-                            descript = descript.substr(0, descript.length - 2).replace(/("\s*\n\s*"|"\s*\r\s*")/gm, "");
-                            const results = new vscode.Hover(new vscode.MarkdownString("**"+word_text+"**:\n"+descript));
+                            let mkdown = new vscode.MarkdownString(descript); // "**"+word_text+"**:\n"+descript
+                            const results = new vscode.Hover(mkdown);
                             resolve(results);
-                        }
+                        }        
                     }
-                });
+                );                
+
             } else {
                 // reject('no definition description available');
                 const results = new vscode.Hover("No Class Description Available");
@@ -434,7 +605,13 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
             let moose_list = this.moose_objects.getMooseObjectsList();
             for (let uri of moose_list) {
                 var path = pathparse.parse(uri.fsPath);
-                completions.push(new vscode.CompletionItem(" " + path.name, vscode.CompletionItemKind.Class));
+                let citem = new vscode.CompletionItem(" " + path.name, vscode.CompletionItemKind.Class);
+                citem.detail = uri.fsPath; // this is at the top
+                let descript = this.moose_objects.getDescription(uri);
+                if (descript !== null){
+                    citem.documentation = descript; // this is at the bottom
+                }
+                completions.push(citem);
             }
         }
 

@@ -1,125 +1,143 @@
 {
-    "name": "moose",
-    "version": "0.4.0",
-    "displayName": "MOOSE for VSCode",
-    "title": "MOOSE for VSCode",
-    "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
-    "keywords": ["moose", "multiphysics"],
-    "authors": [
-      "Chris Sewell"
-    ],
-    "publisher": "chrisjsewell",
-    "license": "SEE LICENSE IN LICENSE.txt",
-    "bugs": {
-        "url": "https://github.com/chrisjsewell/vscode-moose/issues"
-    },
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/chrisjsewell/vscode-moose.git"
-    },
-    "homepage": "https://github.com/chrisjsewell/vscode-moose/blob/master/README.md",
-    "engines": {
-        "vscode": "^1.30.0"
-    },
-    "categories": [
-        "Language Packs"
-    ],
-    "activationEvents": [
-        "onLanguage:moose"
-    ],
-    "main": "./out/extension",
-    "contributes": {
-        "configuration": {
-            "type": "object",
-            "title": "Moose configuration",
-            "properties": {
-                "moose.definitions.ignore": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "default": [
-                        "**/test/**/*", 
-                        "**/examples/**/*",
-                        "**/tutorials/**/*",
-                        "**/.git/**/*", 
-                        "**/node_modules/**/*",
-                        "**/libmesh/**/*",
-                        "**/main.C"
-                    ],
-                    "description": "Specifies the folder regexes to ignore when searching for object definitions"
-                },
-                "moose.autocomplete.modules": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "default": [
-                        "phase_field"
-                    ],
-                    "description": "Specifies the moose module folders to search in for autocomplete Moose Objects (**/modules/<MODULE>/src/<TYPE>/*.C)"
-                },
-                "moose.autocomplete.types": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "default": [
-                        "auxkernels",
-                        "kernels",
-                        "materials",
-                        "postprocessors",
-                        "vectorpostprocessors",
-                        "bcs",
-                        "ics",
-                        "mesh"
-                    ],
-                    "description": "Specifies the src subfolders to search in for autocomplete Moose Objects (**/framework/src/<TYPE>/*.C)"
-                },
-                "moose.autocomplete.other": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "default": [
-                        "src/**/*.C"
-                    ],
-                    "description": "Specifies other regexes to search in for autocomplete Moose Objects"
-                }
-            }
+  "name": "moose",
+  "version": "0.4.0",
+  "displayName": "MOOSE for VSCode",
+  "title": "MOOSE for VSCode",
+  "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
+  "keywords": [
+    "moose",
+    "multiphysics"
+  ],
+  "authors": [
+    "Chris Sewell"
+  ],
+  "publisher": "chrisjsewell",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "bugs": {
+    "url": "https://github.com/chrisjsewell/vscode-moose/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chrisjsewell/vscode-moose.git"
+  },
+  "homepage": "https://github.com/chrisjsewell/vscode-moose/blob/master/README.md",
+  "engines": {
+    "vscode": "^1.30.0"
+  },
+  "categories": [
+    "Language Packs"
+  ],
+  "activationEvents": [
+    "onLanguage:moose"
+  ],
+  "main": "./out/extension",
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Moose configuration",
+      "properties": {
+        "moose.definitions.ignore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/test/**/*",
+            "**/examples/**/*",
+            "**/tutorials/**/*",
+            "**/.git/**/*",
+            "**/node_modules/**/*",
+            "**/libmesh/**/*",
+            "**/main.C"
+          ],
+          "description": "Specifies the folder regexes to ignore when searching for object definitions"
         },
-        "commands": [
-            {
-            "command": "extension.sayHello",
-            "title": "Hello World"
-        }],
-        "languages": [
-            {
-                "id": "moose",
-                "aliases": ["moose", "Moose"],
-                "extensions": [".i"],
-                "configuration": "./language-configuration.json"
-            }
-        ],
-        "grammars": [
-            {
-                "language": "moose",
-                "scopeName": "source.moose",
-                "path": "./syntaxes/moose.tmLanguage.json"
-            }
-        ],
-        "snippets": [
-            {
-                "language": "moose",
-                "path": "./snippets/moose.json"
-            }
-        ]
+        "moose.autocomplete.modules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "phase_field"
+          ],
+          "description": "Specifies the moose module folders to search in for autocomplete Moose Objects (**/modules/<MODULE>/src/<TYPE>/*.C)"
+        },
+        "moose.autocomplete.types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "auxkernels",
+            "kernels",
+            "materials",
+            "postprocessors",
+            "vectorpostprocessors",
+            "bcs",
+            "ics",
+            "mesh"
+          ],
+          "description": "Specifies the src subfolders to search in for autocomplete Moose Objects (**/framework/src/<TYPE>/*.C)"
+        },
+        "moose.autocomplete.other": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "src/**/*.C"
+          ],
+          "description": "Specifies other regexes to search in for autocomplete Moose Objects"
+        }
+      }
     },
-    "scripts": {
-        "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "postinstall": "node ./node_modules/vscode/bin/install",
-        "test": "npm run compile && node ./node_modules/vscode/bin/test"
-    },
-    "devDependencies": {
-        "typescript": "^3.1.4",
-        "vscode": "^1.1.25",
-        "tslint": "^5.8.0",
-        "path-parse": "^1.0.6",
-        "@types/node": "^8.10.25",
-        "@types/mocha": "^2.2.42"
-    }
+    "commands": [
+      {
+        "command": "extension.sayHello",
+        "title": "Hello World"
+      }
+    ],
+    "languages": [
+      {
+        "id": "moose",
+        "aliases": [
+          "moose",
+          "Moose"
+        ],
+        "extensions": [
+          ".i"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "moose",
+        "scopeName": "source.moose",
+        "path": "./syntaxes/moose.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "moose",
+        "path": "./snippets/moose.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "postinstall": "node ./node_modules/vscode/bin/install",
+    "test": "npm run compile && node ./node_modules/vscode/bin/test"
+  },
+  "devDependencies": {
+    "@types/glob-to-regexp": "^0.4.0",
+    "@types/mocha": "^2.2.42",
+    "@types/node": "^8.10.25",
+    "path-parse": "^1.0.6",
+    "tslint": "^5.8.0",
+    "typescript": "^3.1.4",
+    "vscode": "^1.1.25"
+  }
 }
