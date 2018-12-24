@@ -10,17 +10,7 @@ import * as fileread from 'fs';
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-    // Use the console to output diagnostic information (console.log) and errors (console.error)
-    // This line of code will only be executed once when your extension is activated
-    // console.log('Congratulations, your extension "moose" is now active!');
-
-    // TODO delete sayHello command
-    let disposable = vscode.commands.registerCommand('extension.sayHello', () => {
-        // The code you place here will be executed every time your command is executed
-        // Display a message box to the user
-        vscode.window.showInformationMessage('Hello World!');
-    });
-    context.subscriptions.push(disposable);
+    console.log('Activated MOOSE for VSCode extension');
 
     var moose_selector = { scheme: 'file', language: "moose" };
 
@@ -121,6 +111,8 @@ class MooseObjects {
     /**
      * this class handles maintaining a list of MOOSE object URI's
      */
+
+     // TODO 
 
     private moose_objects: { [id: string]: vscode.Uri; };
     private moose_descripts: { [id: string]: string | null; };

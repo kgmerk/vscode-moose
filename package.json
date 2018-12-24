@@ -91,12 +91,7 @@
         }
       }
     },
-    "commands": [
-      {
-        "command": "extension.sayHello",
-        "title": "Hello World"
-      }
-    ],
+    "commands": [],
     "languages": [
       {
         "id": "moose",
@@ -142,6 +137,7 @@
   },
   "dependencies": {
     "glob-to-regexp": "^0.4.0",
+    "@types/glob-to-regexp": "^0.4.0",
     "path-parse": "^1.0.6"
   }
 }
