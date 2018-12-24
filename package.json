@@ -1,6 +1,6 @@
 {
   "name": "moose",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "displayName": "MOOSE for VSCode",
   "title": "MOOSE for VSCode",
   "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
@@ -87,7 +87,8 @@
             "mesh",
             "timesteppers",
             "functions",
-            "preconditioners"
+            "preconditioners",
+            "executioners"
           ],
           "description": "Specifies the src subfolders to search in for MOOSE Objects (**/framework/src/<TYPE>/*.C)"
         },
