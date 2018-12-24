@@ -1,6 +1,6 @@
 {
   "name": "moose",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "displayName": "MOOSE for VSCode",
   "title": "MOOSE for VSCode",
   "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
@@ -91,7 +91,12 @@
         }
       }
     },
-    "commands": [],
+    "commands": [
+      {
+        "command": "moose.ResetMooseObjects",
+        "title": "MOOSE: Reset MOOSE Objects Database"
+      }
+    ],
     "languages": [
       {
         "id": "moose",

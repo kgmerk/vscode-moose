@@ -61,6 +61,12 @@ Settings are configured in `Preferences -> Settings`:
 | `moose.autocomplete.types`   | Specifies the src subfolders to search in for autocomplete MOOSE Objects (`**/framework/src/<TYPE>/*.C`)             |
 | `moose.autocomplete.other`   | Specifies other regexes to search in for autocomplete MOOSE Objects                                                  |
 
+## Commands
+
+Accessed with Cmnd+Shift+P
+
+- MOOSE: Reset MOOSE Objects Database
+
 ## How to install from Marketplace
 
 This extension is hosted at Visual Studio Marketplace

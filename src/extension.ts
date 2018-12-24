@@ -10,11 +10,23 @@ import * as fileread from 'fs';
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
+    context.workspaceState
+
     console.log('Activated MOOSE for VSCode extension');
 
     var moose_selector = { scheme: 'file', language: "moose" };
 
+    // Initialise MOOSE objects DB
+    // TODO persistently store moose object data, maybe using context.workspaceState? (but what if files have been changed outside vs-code)
     let moose_objects = new MooseObjects();
+
+    // allow manual reset of MOOSE objects DB
+    context.subscriptions.push(
+        vscode.commands.registerCommand('moose.ResetMooseObjects', () => {
+            moose_objects.resetMooseObjects();
+    }));
+
+    // Keep MOOSE objects DB up-to-date
     let config_change = vscode.workspace.onDidChangeConfiguration(event => {
         if (event.affectsConfiguration('moose')) {moose_objects.resetMooseObjects();}
     });
@@ -61,7 +73,6 @@ export function deactivate() {
 
 export default async function findFilesInWorkspace(include: string, exclude = '', maxResults = 2) {
 
-    // TODO exclude whole workspace folders
     const foundFiles = await vscode.workspace.findFiles(
         include,
         exclude,
@@ -109,10 +120,11 @@ function extract_classdescript(uri: vscode.Uri, ftype: string = 'utf8') {
 
 class MooseObjects {
     /**
-     * this class handles maintaining a list of MOOSE object URI's
+     * this class handles maintaining a list of MOOSE object URIs and descriptions
      */
 
-     // TODO 
+     // TODO use vscode-cpptools-api to evaluate the MOOSE object .C files?
+     // see https://github.com/Microsoft/vscode-cpptools-api and https://stackoverflow.com/questions/41559471/is-it-possible-to-call-command-between-extensions-in-vscode 
 
     private moose_objects: { [id: string]: vscode.Uri; };
     private moose_descripts: { [id: string]: string | null; };
@@ -245,7 +257,7 @@ class MooseObjects {
 
     public addMooseObject(uri: vscode.Uri){
         // console.log("trigerred addMooseObject: "+uri.fsPath);
-
+        
         // we need the path relative to the workspace folder
         let wrkfolder = vscode.workspace.getWorkspaceFolder(uri);
         if (!wrkfolder){
