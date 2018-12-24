@@ -63,9 +63,9 @@ Settings are configured in `Preferences -> Settings`:
 
 ## Commands
 
-Accessed with Cmnd+Shift+P
+Accessed with `Cmnd+Shift+P`:
 
-- MOOSE: Reset MOOSE Objects Database
+- `MOOSE: Reset MOOSE Objects Database`
 
 ## How to install from Marketplace
 
