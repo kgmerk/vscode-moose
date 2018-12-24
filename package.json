@@ -1,6 +1,6 @@
 {
   "name": "moose",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "displayName": "MOOSE for VSCode",
   "title": "MOOSE for VSCode",
   "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
@@ -41,8 +41,7 @@
           "items": {
             "type": "string"
           },
-          "default": [
-          ],
+          "default": [],
           "description": "Specifies the workspace regexes to ignore when searching for MOOSE objects"
         },
         "moose.exclude.relpaths": {
@@ -85,7 +84,10 @@
             "vectorpostprocessors",
             "bcs",
             "ics",
-            "mesh"
+            "mesh",
+            "timesteppers",
+            "functions",
+            "preconditioners"
           ],
           "description": "Specifies the src subfolders to search in for MOOSE Objects (**/framework/src/<TYPE>/*.C)"
         },
@@ -98,6 +100,24 @@
             "src/**/*.C"
           ],
           "description": "Specifies additional path regexes (relative to workspaces) to search for MOOSE objects"
+        },
+        "moose.object.alias": {
+          "type": "object",
+          "patternProperties": {
+            "*": {
+              "type": "string"
+            }
+          },
+          "default": {
+            "MooseParsedFunction": "ParsedFunction",
+            "MooseParsedGradFunction": "ParsedGradFunction",
+            "MooseParsedVectorFunction": "ParsedVectorFunction",
+            "SingleMatrixPreconditioner": "SMP",
+            "FieldSplitPreconditioner": "FSP",
+            "FiniteDifferencePreconditioner": "FDP",
+            "PhysicsBasedPreconditioner": "PBP"
+          },
+          "description": "Name aliases of objects, i.e. set by registerMooseObjectAliased"
         }
       }
     },

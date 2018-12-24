@@ -10,15 +10,12 @@ import * as fileread from 'fs';
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-    context.workspaceState
-
     console.log('Activated MOOSE for VSCode extension');
 
     var moose_selector = { scheme: 'file', language: "moose" };
 
     // Initialise MOOSE objects DB
-    // TODO persistently store moose object data, maybe using context.workspaceState? (but what if files have been changed outside vs-code)
-    let moose_objects = new MooseObjects();
+    var moose_objects = new MooseObjects();
 
     // allow manual reset of MOOSE objects DB
     context.subscriptions.push(
@@ -126,10 +123,13 @@ class MooseObjects {
      // TODO use vscode-cpptools-api to evaluate the MOOSE object .C files?
      // see https://github.com/Microsoft/vscode-cpptools-api and https://stackoverflow.com/questions/41559471/is-it-possible-to-call-command-between-extensions-in-vscode 
 
+    // private context: vscode.ExtensionContext;
     private moose_objects: { [id: string]: vscode.Uri; };
     private moose_descripts: { [id: string]: string | null; };
 
     constructor() {
+        // TODO persistently store moose object data, maybe using context.workspaceState or context.storagePath? (but what if files have been changed outside vs-code)
+        // this.context = context
         this.moose_objects = {};
         this.moose_descripts = {};
         this.resetMooseObjects();
@@ -148,8 +148,13 @@ class MooseObjects {
     }
 
     private extractName(uri: vscode.Uri) {
-        const path = pathparse.parse(uri.fsPath);
-        return path.name;
+        let name = pathparse.parse(uri.fsPath).name;
+        let alias: { [id: string]: string};
+        alias = vscode.workspace.getConfiguration('moose.object').get('alias', {});
+        if (name in alias){
+            name = alias[name];
+        }
+        return name;
     }
     private logDebug(message: string) {
         console.log("Moose Objects: " + message);

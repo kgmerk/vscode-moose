@@ -53,13 +53,14 @@ and initialisations (as sub-blocks) in Variables/AuxVariables.
 
 Settings are configured in `Preferences -> Settings`:
 
-| Name                         | Description                                                                                                          |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `moose.exclude.workspaces`   | Specifies the workspace regexes to ignore when searching for MOOSE objects                                           |
-| `moose.exclude.relpaths`     | Specifies the path regexes (relative to workspaces) to ignore when searching for MOOSE objects                       |
-| `moose.include.modules`      | Specifies the moose module folders to search in for MOOSE Objects (`**/modules/<MODULE>/src/<TYPE>/*.C`)             |
-| `moose.include.types`        | Specifies the src subfolders to search in for MOOSE Objects (`**/framework/src/<TYPE>/*.C`)                          |
-| `moose.include.relpaths`     | Specifies additional path regexes (relative to workspaces) to search for MOOSE Objects                               |
+| Name                         | Description                                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------|
+| `moose.exclude.workspaces`   | Specifies the workspace regexes to ignore when searching for MOOSE objects                                |
+| `moose.exclude.relpaths`     | Specifies the path regexes (relative to workspaces) to ignore when searching for MOOSE objects            |
+| `moose.include.modules`      | Specifies the moose module folders to search in for MOOSE Objects (`**/modules/<MODULE>/src/<TYPE>/*.C`)  |
+| `moose.include.types`        | Specifies the src subfolders to search in for MOOSE Objects (`**/framework/src/<TYPE>/*.C`)               |
+| `moose.include.relpaths`     | Specifies additional path regexes (relative to workspaces) to search for MOOSE Objects                    |
+| `moose.object.alias`         | Name aliases of objects, i.e. set by registerMooseObjectAliased                                           |
 
 ## Commands
 
