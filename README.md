@@ -1,6 +1,6 @@
 # VSCode for MOOSE
 
-This extension provides language support for input files of MOOSE (Multiphysics Object Oriented Simulation Environment) applications.
+This extension provides language support and IntelliSense for input files of MOOSE (Multiphysics Object Oriented Simulation Environment) applications.
 
 ![Example Workspace](images/example_workspace.png)
 
@@ -11,33 +11,27 @@ Github Repo: https://github.com/chrisjsewell/vscode-moose
 - Syntax Highlighting
 - Input Block Folding
 - Input Blocks Outline View
-- Find/Peek All References to Variables
 - Hover/Peek/GoTo Definitions of MOOSE Objects
 - Autocomplete block names and MOOSE Objects
+- Find/Peek All References to Variables
 - Main/Sub-Block snippets
 
-### Find/Peek All References
+### IntelliSense
 
-Looks for all references on the right side of `=` assignments,
-and initialisations (as sub-blocks) in Variables/AuxVariables.
+VSCode for MOOSE builds a mapping of MOOSE object names to their defining source file (<NAME>.C) within the workspace.
 
-![Find/Peek All References](images/find_all_references.gif)
+Note that multiple folders can be added to a workspace by: `File -> Add Folder To Workspace...`.
+Therefore, in order to create mappings for core MOOSE objects, the main MOOSE library folder should be added to the workspace.
+
+Rules for inclusion/exclusion of file and folder regexes are user controllable *via* [Settings](#settings).
 
 ### Hover/Peek/GoTo Definitions
 
-Attempts to find a file in the current workspace, matching the regex: `**/src/**/{ObjectName}.C`,
-and ignoring specified folders.
-
 ![GoTo/Peek Definitions](images/peek_definitions.gif)
 
-Note that multiple folders can be added to a workspace by: `File -> Add Folder To Workspace...`.
-In this manner, you can find definitions from both your working/app folder and the main MOOSE library.
+The C/C++ extension is required for syntax highlighting of the C file.
 
 Hovering over MOOSE objects attempts to retrieve the text residing in `addClassDescription`.
-
-Ignored folder regexes can be configured : `moose.definitions.ignore` (See Settings).
-
-The C/C++ extension is used for syntax highlighting of the C file.
 
 ### Autocomplete
 
@@ -48,7 +42,12 @@ Autocompletion triggers:
 
 ![Autocomplete](images/autocomplete.gif)
 
-See Settings for controlling where MOOSE Objects are searched for.
+### Find/Peek All References
+
+Looks for all references on the right side of `=` assignments,
+and initialisations (as sub-blocks) in Variables/AuxVariables.
+
+![Find/Peek All References](images/find_all_references.gif)
 
 ## Settings
 
@@ -56,10 +55,11 @@ Settings are configured in `Preferences -> Settings`:
 
 | Name                         | Description                                                                                                          |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `moose.definitions.ignore`   | Specifies the folder regexes to ignore when searching for MOOSE object                                               |
-| `moose.autocomplete.modules` | Specifies the moose module folders to search in for autocomplete MOOSE Objects (`**/modules/<MODULE>/src/<TYPE>/*.C`)|
-| `moose.autocomplete.types`   | Specifies the src subfolders to search in for autocomplete MOOSE Objects (`**/framework/src/<TYPE>/*.C`)             |
-| `moose.autocomplete.other`   | Specifies other regexes to search in for autocomplete MOOSE Objects                                                  |
+| `moose.exclude.workspaces`   | Specifies the workspace regexes to ignore when searching for MOOSE objects                                           |
+| `moose.exclude.relpaths`     | Specifies the path regexes (relative to workspaces) to ignore when searching for MOOSE objects                       |
+| `moose.include.modules`      | Specifies the moose module folders to search in for MOOSE Objects (`**/modules/<MODULE>/src/<TYPE>/*.C`)             |
+| `moose.include.types`        | Specifies the src subfolders to search in for MOOSE Objects (`**/framework/src/<TYPE>/*.C`)                          |
+| `moose.include.relpaths`     | Specifies additional path regexes (relative to workspaces) to search for MOOSE Objects                               |
 
 ## Commands
 
@@ -105,3 +105,7 @@ Added MOOSE object hovering
 ### 0.5.0
 
 Added MOOSE descriptions in autocomplete and auto-update of MOOSE objects
+
+### 0.6.0
+
+Renamed settings keys (and added ignore workspace option)

@@ -59,7 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider(
-            moose_selector, new DefinitionProvider()));
+            moose_selector, new DefinitionProvider(moose_objects)));
 
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(
@@ -161,8 +161,8 @@ class MooseObjects {
 
     private buildIncludes() {
        // build search includes for moose library
-       const findModules = vscode.workspace.getConfiguration('moose.autocomplete').get('modules', []);
-       const findTypes = vscode.workspace.getConfiguration('moose.autocomplete').get('types', []);
+       const findModules = vscode.workspace.getConfiguration('moose.include').get('modules', []);
+       const findTypes = vscode.workspace.getConfiguration('moose.include').get('types', []);
 
        let includePaths: string[] = [];
        for (let type of findTypes) {
@@ -173,7 +173,7 @@ class MooseObjects {
        }
 
        // include user defined objects
-       const findOthers = vscode.workspace.getConfiguration('moose.autocomplete').get('other', []);
+       const findOthers = vscode.workspace.getConfiguration('moose.include').get('relpaths', []);
        for (let other of findOthers) {
            includePaths.push(other);
        }
@@ -181,7 +181,22 @@ class MooseObjects {
     }
 
     private buildExcludes() {
-        return vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
+        return vscode.workspace.getConfiguration('moose.exclude').get('relpaths', []);
+    }
+
+    private ignoreWorkspace(uri: vscode.Uri) {
+
+        const workpath = vscode.workspace.getWorkspaceFolder(uri);
+        if (!workpath) {
+            return true;
+        }
+
+        for (let wrkregex of vscode.workspace.getConfiguration('moose.exclude').get('workspaces', [])){
+            if (globToregex(wrkregex).test(workpath.uri.fsPath)){
+                return true;
+            }
+        }
+        return false;
     }
 
     public resetMooseObjects() {
@@ -209,17 +224,20 @@ class MooseObjects {
             include = `{${includePaths.join(',')}}`;
         }
 
-        const uri = findFilesInWorkspace(include, exclude, 100000);
+        const uris = findFilesInWorkspace(include, exclude, 100000);
 
-        uri.then(
+        // build names dict
+        uris.then(
             uris_found => {
                 let errors = ["duplicates found; "];
                 for (let uri of uris_found) {
-                    const objname = this.extractName(uri);
-                    if (objname in this.moose_objects){
-                        errors.push(this.moose_objects[objname].fsPath+" & "+uri.fsPath);
-                    } else {
-                        this.moose_objects[objname] = uri;
+                    if (!this.ignoreWorkspace(uri)){                   
+                        const objname = this.extractName(uri);
+                        if (objname in this.moose_objects){
+                            errors.push(this.moose_objects[objname].fsPath+" & "+uri.fsPath);
+                        } else {
+                            this.moose_objects[objname] = uri;
+                        }
                     }
                 }
                 if (errors.length > 1){
@@ -228,12 +246,15 @@ class MooseObjects {
             }
         );
 
-        uri.then(
+        // build description dict
+        uris.then(
             uris_found => {
                 for (let uri of uris_found) {
-                    const objname = this.extractName(uri);
-                    if (!(objname in this.moose_descripts)){
-                        this.createDescription(uri);
+                    if (!this.ignoreWorkspace(uri)){
+                        const objname = this.extractName(uri);
+                        if (!(objname in this.moose_descripts)){
+                            this.createDescription(uri);
+                        }
                     }
                 }
             }
@@ -257,12 +278,17 @@ class MooseObjects {
 
     public addMooseObject(uri: vscode.Uri){
         // console.log("trigerred addMooseObject: "+uri.fsPath);
+
+        if (!this.ignoreWorkspace(uri)){
+            return;
+        }
         
         // we need the path relative to the workspace folder
         let wrkfolder = vscode.workspace.getWorkspaceFolder(uri);
         if (!wrkfolder){
             return;
         }
+
         const path = pathparse.relative(wrkfolder.uri.fsPath, uri.fsPath);
         
         let adduri = false;
@@ -334,15 +360,23 @@ class MooseObjects {
 }
 
 class DefinitionProvider implements vscode.DefinitionProvider {
+
+    private moose_objects: MooseObjects;
+    constructor(moose_objects: MooseObjects) {
+        this.moose_objects = moose_objects;
+    }
+    
     public provideDefinition(
         document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
         Thenable<vscode.Location> {
         return this.doFindDefinition(document, position, token);
     }
+    
     private doFindDefinition(
         document: vscode.TextDocument, position: vscode.Position,
         token: vscode.CancellationToken): Thenable<vscode.Location> {
         return new Promise<vscode.Location>((resolve, reject) => {
+            
             let wordRange = document.getWordRangeAtPosition(position);
 
             // ignore if empty
@@ -352,42 +386,18 @@ class DefinitionProvider implements vscode.DefinitionProvider {
                 reject("empty string not definable");
                 return;
             }
+
             let word_text = document.getText(wordRange);
+            let obj_dict = this.moose_objects.getMooseObjectsDict();
 
-            const ignorePaths = vscode.workspace.getConfiguration('moose.definitions').get('ignore', []);
-            var exclude = '';
-            if (ignorePaths) {
-                exclude = `{${ignorePaths.join(',')}}`;
+            if (word_text in obj_dict) {
+                var location = new vscode.Location(
+                    obj_dict[word_text],
+                    new vscode.Position(0, 0));
+                resolve(location);
+            } else {
+                reject("could not find declaration");
             }
-            const includePaths = [
-                '**/src/**/' + word_text + '.C'
-            ];
-
-            // TODO search outside workspace
-            const uri = findFilesInWorkspace(`{${includePaths.join(',')}}`, exclude);
-
-            uri.then(
-                uris_found => {
-
-                    if (uris_found.length === 0) {
-                        reject("could not find declaration");
-                        return;
-                    }
-                    if (uris_found.length > 1) {
-                        vscode.window.showWarningMessage("multiple declarations found");
-                        reject("multiple declarations found");
-                        return;
-                    }
-
-                    var location = new vscode.Location(
-                        uris_found[0],
-                        new vscode.Position(0, 0));
-                    resolve(location);
-                },
-                failure => {
-                    reject("file finder failed");
-                }
-            );
 
         });
     }

@@ -1,6 +1,6 @@
 {
   "name": "moose",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "displayName": "MOOSE for VSCode",
   "title": "MOOSE for VSCode",
   "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
@@ -36,7 +36,16 @@
       "type": "object",
       "title": "Moose configuration",
       "properties": {
-        "moose.definitions.ignore": {
+        "moose.exclude.workspaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+          ],
+          "description": "Specifies the workspace regexes to ignore when searching for MOOSE objects"
+        },
+        "moose.exclude.relpaths": {
           "type": "array",
           "items": {
             "type": "string"
@@ -50,19 +59,20 @@
             "**/libmesh/**/*",
             "**/main.C"
           ],
-          "description": "Specifies the folder regexes to ignore when searching for object definitions"
+          "description": "Specifies the path regexes (relative to workspaces) to ignore when searching for MOOSE objects"
         },
-        "moose.autocomplete.modules": {
+        "moose.include.modules": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [
-            "phase_field"
+            "phase_field",
+            "tensor_mechanics"
           ],
-          "description": "Specifies the moose module folders to search in for autocomplete Moose Objects (**/modules/<MODULE>/src/<TYPE>/*.C)"
+          "description": "Specifies the MOOSE module folders to search in for MOOSE Objects (**/modules/<MODULE>/src/<TYPE>/*.C)"
         },
-        "moose.autocomplete.types": {
+        "moose.include.types": {
           "type": "array",
           "items": {
             "type": "string"
@@ -77,9 +87,9 @@
             "ics",
             "mesh"
           ],
-          "description": "Specifies the src subfolders to search in for autocomplete Moose Objects (**/framework/src/<TYPE>/*.C)"
+          "description": "Specifies the src subfolders to search in for MOOSE Objects (**/framework/src/<TYPE>/*.C)"
         },
-        "moose.autocomplete.other": {
+        "moose.include.relpaths": {
           "type": "array",
           "items": {
             "type": "string"
@@ -87,7 +97,7 @@
           "default": [
             "src/**/*.C"
           ],
-          "description": "Specifies other regexes to search in for autocomplete Moose Objects"
+          "description": "Specifies additional path regexes (relative to workspaces) to search for MOOSE objects"
         }
       }
     },
