@@ -110,3 +110,20 @@ Added MOOSE descriptions in autocomplete and auto-update of MOOSE objects
 ### 0.6.0
 
 Renamed settings keys (and added ignore workspace option)
+
+## VS Code Extension Development
+
+To create extension:
+
+    >>> yo code
+
+To open MOOSE for VSCode extension:
+
+    >>> cd /path/to/extension
+    >>> code .
+
+Use F5 to open test environment.
+
+To publish extension:
+
+    >>> vsce publish
