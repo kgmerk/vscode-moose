@@ -1,27 +1,26 @@
 'use strict';
 
-// import * as ppath from 'path';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
-import { resolve } from 'url';
+import * as ppath from 'path';
 
 const beginMarker = '**START YAML DATA**\n';
 const endMarker = '**END YAML DATA**\n';
 
 // interface for dictionary returned by ./app --yaml
 export interface paramNode {
-    name: string,
-    required: boolean
-    default: string
-    cpp_type: string
-    group_name: string
-    description: string
+    name: string;
+    required: boolean;
+    default: string;
+    cpp_type: string;
+    group_name: string | null;
+    description: string;
   }
   export interface syntaxNode {
     name: string;
     description: string;
-    parameters: paramNode[];
-    subblocks: syntaxNode[];
+    parameters: paramNode[] | null;
+    subblocks: syntaxNode[] | null;
   }
 
 // interface for node match
@@ -51,24 +50,32 @@ export class MooseObjectsDB {
     //     this.yaml_path = null;
     // }
 
+    // TODO add additional debug / error handlers in constructor (store as attributes)
     private logDebug(message: string) {
         console.log("Moose Objects: " + message);
     }
-    // private raiseError(err: Error) {
-    //     // console.warn("Moose Objects: " + err.message);
-    //     throw err;
-    // }
+    private logError(err: Error) {
+        console.warn("Moose Objects: " + err.message);
+    }
 
+    // set yaml path and (if set) rebuild app data
     public setYamlPath(path: string){
-        if (this.yaml_path !== null) {
-            throw Error("the path is already set");
-        }
+        // if (this.yaml_path !== null) {
+        //     throw Error("the path is already set");
+        // }
         // check exists before assigning
         if (!fs.existsSync(path)){
             throw Error("the path does not exist: "+path);
         }
-        this.yaml_path = path;
-
+        // check not same as already set
+        if (this.yaml_path !== null) {
+            if (this.yaml_path === ppath.normalize(path)){
+                return;
+            }
+        }
+        
+        this.yaml_path = ppath.normalize(path);
+        this.rebuildAppData();
     }
     public getYamlPath(){
         if (this.yaml_path === null) {
@@ -82,7 +89,6 @@ export class MooseObjectsDB {
 
         // read the file
         var path = this.getYamlPath();
-
         let content = new Promise<string>(function(resolve, reject){
             fs.readFile(path, 'utf8', (err, content) => {
                 if (err) {
@@ -196,32 +202,94 @@ export class MooseObjectsDB {
         }
       }
 
-    public matchSyntaxNode(configPath: string[]) {
+    public async matchSyntaxNode(configPath: string[]) {
         // we need to match this to one node in the yaml tree. multiple matches may
         // occur we will later select the most specific match
-        let data_promise = this.retrieveSyntaxNodes();
+        let data = await this.retrieveSyntaxNodes();
         let matchList: nodeMatch[] = [];
 
-        return data_promise.then(data => {
-            for (let node of data) {
-                this.recurseSyntaxNode(node, configPath, matchList);
-              }
+        for (let node of data) {
+            this.recurseSyntaxNode(node, configPath, matchList);
+        }
           
-              // no match found
-              if (matchList.length === 0) {
-                // return { node: null, fuzzyOnLast: null };
-                // let match: nodeMatch = {
-                //     fuzz: 0,
-                //     fuzzyOnLast: false
-                // };
-                return null;
-              }
+        // no match found
+        if (matchList.length === 0) {                
+            // let match: nodeMatch = {
+            //     fuzz: 0,
+            //     fuzzyOnLast: false
+            // };
+            return null;
+        }
           
-              // sort least fuzz first and return minimum fuzz match
-              matchList.sort((a, b) => a.fuzz - b.fuzz);
-              return matchList[0];              
-        });
+        // sort least fuzz first and return minimum fuzz match
+        matchList.sort((a, b) => a.fuzz - b.fuzz);
+        return matchList[0];              
           
+    }
+
+    // add the /Type (or /<type>/Type for top level blocks) pseudo path
+    // if we are inside a typed block
+    private getTypedPath(configPath: string[], type: null | string, fuzzyOnLast: boolean) {
+        let typedConfigPath = configPath.slice();
+
+        if (type !== null && type !== '') {
+            
+            if (fuzzyOnLast) {
+                typedConfigPath[configPath.length - 1] = type;
+            } else {
+                typedConfigPath.push(...Array.from(['<type>', type] || []));
+            }
+        }
+
+        return typedConfigPath;
+    }
+
+    // fetch a list of valid parameters for the current config path
+    public async fetchParameterList(configPath: string[], explicitType: null | string = null) {
+
+        // parameters cannot exist outside of top level blocks
+        if (configPath.length === 0) {
+            return [] as paramNode[];
+        }
+
+        let match = await this.matchSyntaxNode(configPath);
+
+        // bail out if we are in an invalid path
+        if (match === null) {
+            return [] as paramNode[];
+        }
+
+        let { node, fuzzyOnLast } = match;
+        let searchNodes: syntaxNode[] = [node];
+              
+        // add typed node if either explicitly set in input or if a default is known
+        if (explicitType === null) {
+            for (let param of Array.from(node.parameters || [])) {
+                if (param.name === 'type') {
+                    explicitType = param.default;
+                }
+            }
+        }
+
+        if (explicitType !== null) {
+            let typedPath = this.getTypedPath(configPath, explicitType, fuzzyOnLast);
+            let result = await this.matchSyntaxNode(typedPath);
+            if (result === null) {
+                // return [] as paramNode[]; // TODO this was in original code but doesn't work?
+            } else {
+                searchNodes.unshift(result.node);
+            }
+        }
+          
+        let paramList: paramNode[] = [];
+        for (node of Array.from(searchNodes)) {
+            if (node !== null) {
+                paramList.push(...Array.from(node.parameters || [] as paramNode[]));
+            }
+        }
+          
+        return paramList;
+            
     }
 
 }

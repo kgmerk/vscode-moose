@@ -22,17 +22,25 @@ import * as moosedb from '../moose_objects';
 // Defines a Mocha test suite to group tests of similar kind together
 suite("MooseObjectsDB Tests", function () {
 
-    test("Initialise", function () {
-        let db = new moosedb.MooseObjectsDB();
+    // TODO how to specify relative data path for test?
+    // TODO how to that an object (or all objects in an array) matches an interface?
+
+    var db: moosedb.MooseObjectsDB;
+
+    // setup before each test (NB: use SuiteSetup for setup for whole suite)
+    setup(function() {
+        // console.log("setup test")
+        db = new moosedb.MooseObjectsDB();
+    });
+    teardown(function() {
+        // console.log("teardown test")
     });
 
     test("Rebuild (no yaml set)", function () {
-        let db = new moosedb.MooseObjectsDB();
         return assert.throws(() => db.rebuildAppData(), Error);
     });
 
     test("Rebuild (non-existent yaml)", function () {
-        let db = new moosedb.MooseObjectsDB();
         assert.throws(() => db.setYamlPath('non-existent'), Error);
  
         // old way to do it without chaiAsPromised
@@ -46,33 +54,53 @@ suite("MooseObjectsDB Tests", function () {
     });
  
     test("Rebuild (bad yaml)", function () {
-        let db = new moosedb.MooseObjectsDB();
         db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/bad.yaml');
-        // TODO how to specify relative data path for test
-        db.rebuildAppData();
+        // db.rebuildAppData();
         return expect(db.retrieveSyntaxNodes()).to.eventually.be.rejectedWith(Error);
     });
 
     test("Rebuild (success)", function () {
-        let db = new moosedb.MooseObjectsDB();
         db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
-        db.rebuildAppData();
-        return expect(db.retrieveSyntaxNodes()).to.eventually.be.instanceOf(Array);
-        // TODO how to test for instance of interface or array of interfaces (can create a test class implementing syntaxNode?)
+        // db.rebuildAppData();
+        return expect(db.retrieveSyntaxNodes()
+        ).to.eventually.be.instanceOf(Array).that.has.length(41);
     });
 
     test("Match Syntax Node (failure)", function () {
-        let db = new moosedb.MooseObjectsDB();
         db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
-        db.rebuildAppData();
-        return expect(db.matchSyntaxNode(['wrong'])).to.eventually.be.equal(null);
+        // db.rebuildAppData();
+        return expect(db.matchSyntaxNode(['wrong'])).to.eventually.be.eql(null);
     });
 
     test("Match Syntax Node (success)", function () {
-        let db = new moosedb.MooseObjectsDB();
         db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
-        db.rebuildAppData();
-        return expect(db.matchSyntaxNode(['Kernels'])).to.eventually.be.instanceOf(Object);
+        // db.rebuildAppData();
+        // db.matchSyntaxNode(['Kernels','AllenCahn']).then(value => {
+        //     console.log(value);
+        // });
+        return expect(db.matchSyntaxNode(['Kernels','AllenCahn'])
+        ).to.eventually.have.property('node').which.has.keys(
+            ['name', 'description', 'parameters', 'subblocks']);
+    });
+
+    test("fetch Parameter List (success)", function () {
+        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        // db.rebuildAppData();
+        // db.fetchParameterList(['Kernels','AllenCahn']).then(value => {
+        //     console.log(value);
+        // });     
+        return expect(db.fetchParameterList(['Kernels','AllenCahn'])
+        ).to.eventually.be.instanceof(Array).that.has.length(17);
+    });
+
+    test("fetch Parameter List (success for typed path)", function () {
+        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        // db.rebuildAppData();
+        // db.fetchParameterList(['Mesh'], 'AnnularMesh').then(value => {
+        //     console.log(value);
+        // });     
+        return expect(db.fetchParameterList(['Mesh'], 'AnnularMesh')
+        ).to.eventually.be.instanceof(Array).that.has.length(37);
     });
 
 });
