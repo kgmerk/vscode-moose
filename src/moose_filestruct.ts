@@ -10,7 +10,7 @@ export class MooseFileStruct {
     /**
      * this class handles maintaining a list of MOOSE object URIs and descriptions
      */
-    // TODO use vscode-cpptools-api to evaluate the MOOSE object .C files?
+    
     // see https://github.com/Microsoft/vscode-cpptools-api and https://stackoverflow.com/questions/41559471/is-it-possible-to-call-command-between-extensions-in-vscode 
     // private context: vscode.ExtensionContext;
     private moose_objects: {
@@ -194,7 +194,7 @@ export class MooseFileStruct {
         }
         return;
     }
-    private extract_classdescript(uri: vscode.Uri, ftype: string = 'utf8') {
+    private extractClassdescript(uri: vscode.Uri, ftype: string = 'utf8') {
         /** NB: originally used
          * const descript = await vscode.workspace.openTextDocument(uri).then(docobj => {...});
          * but this triggered open event(s)
@@ -236,7 +236,7 @@ export class MooseFileStruct {
             descript = new Promise((resolve, reject) => { resolve(this.moose_descripts[objname]); });
             return descript;
         }
-        descript = this.extract_classdescript(uri);
+        descript = this.extractClassdescript(uri);
         descript.then(value => this.moose_descripts[objname] = value);
         return descript;
     }

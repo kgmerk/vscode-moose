@@ -134,7 +134,7 @@ export class MooseDoc {
             completions = await this.completeParameter(configPath, explicitType);
         } else if (!!(match = otherParameter.exec(line))) {
             // TODO factor out, see above
-            let param: moosedb.paramNode;
+            let param: moosedb.ParamNode;
             let paramName = match[1];
             let isQuoted = match[2][0] === "'";
             let hasSpace = !!match[3];
@@ -427,7 +427,7 @@ export class MooseDoc {
      * @param isQuoted 
      * @param hasSpace 
      */
-    private computeValueCompletion(param: moosedb.paramNode, isQuoted: boolean = false, hasSpace: boolean = false) {
+    private computeValueCompletion(param: moosedb.ParamNode, isQuoted: boolean = false, hasSpace: boolean = false) {
         let completions: Completion[] = [];
         let singleOK = !hasSpace;
         let vectorOK = isQuoted || !hasSpace;
@@ -518,7 +518,7 @@ export class MooseDoc {
             let otherArray = otherParameter.exec(line);
             if (otherArray !== null) {
                 let paramName = otherArray[1];
-                let param: moosedb.paramNode;
+                let param: moosedb.ParamNode;
                 for (param of Array.from(await this.syntaxdb.fetchParameterList(originalConfigPath, explicitType))) {
                     if (param.name === paramName) {
                         completions = this.computeValueCompletion(param);
@@ -543,7 +543,7 @@ export class MooseDoc {
 
         let completions: Completion[] = [];
         let paramNamesFound: string[] = [];
-        let param: moosedb.paramNode;
+        let param: moosedb.ParamNode;
 
         // loop over valid parameters
         let params = await this.syntaxdb.fetchParameterList(configPath, explicitType);
@@ -581,7 +581,7 @@ export class MooseDoc {
     /**
      * assess the outline of the whole document,
      * returning the outline structure of the document,
-     * and a list of syntax error
+     * and a list of syntax errors
      */
     public async assessOutline() {
 
@@ -762,38 +762,3 @@ export class MooseDoc {
     }
 
 }
-
-// // parse contents of subBlock block
-// while (true) {
-
-//     if (i >= nlines) {
-//         break;
-//     }
-//     let line = this.doc.getTextForRow(i);
-//     if (blockCloseTop.test(line)) {
-//         break;
-//     }
-
-//     if (blockOpenOneLevel.test(line)) {
-//         if (level === 0) {
-//             let blockopen = blockOpenOneLevel.exec(line);
-//             if (blockopen !== null) {
-//                 subBlock = { name: blockopen[1], properties: {} };
-//             }
-//         }
-//         level++;
-//     } else if (blockCloseOneLevel.test(line)) {
-//         level--;
-//         if (level === 0) {
-//             subBlockList.push(subBlock);
-//         }
-//     } else if (level === 1) {
-//         for (let filter of Array.from(filterList)) {
-//             var match;
-//             if (match = filter.re.exec(line)) {
-//                 subBlock.properties[filter.name] = match[1];
-//                 break;
-//             }
-//         }
-//     }
-

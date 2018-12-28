@@ -33,11 +33,16 @@ suite("MooseSyntaxDB Tests", function () {
     // chai-interface doesn't have @types/chai-interface
 
     var db: moosedb.MooseSyntaxDB;
+    var yamlPath: string;
+    var jsonPath: string;
 
     // setup before each test (NB: use SuiteSetup for setup for whole suite)
     setup(function () {
         // console.log("setup test")
         db = new moosedb.MooseSyntaxDB();
+        db.setErrorHandles([console.warn]);
+        yamlPath = getPath('../../src/test/syntax.yaml');
+        jsonPath = getPath('../../src/test/syntax.json');
     });
     teardown(function () {
         // console.log("teardown test")
@@ -48,7 +53,7 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("Rebuild (non-existent yaml)", function () {
-        assert.throws(() => db.setYamlPath('non-existent'), Error);
+        assert.throws(() => db.setPaths('non-existent'), Error);
 
         // old way to do it without chaiAsPromised
         // if (db.appdata.promise !== undefined) {
@@ -61,44 +66,44 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("Rebuild (bad yaml)", function () {
-        db.setYamlPath(getPath('../../src/test/bad.yaml'));
+        db.setPaths(getPath('../../src/test/bad.yaml'));
         // db.rebuildAppData();
         return expect(db.retrieveSyntaxNodes()).to.eventually.be.rejectedWith(Error);
         // TODO this logs a; rejected promise not handled within 1 second, is that ok?
     });
 
     test("Rebuild (success)", function () {
-        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
+        db.setPaths(yamlPath, jsonPath);
         // db.rebuildAppData();
         return expect(db.retrieveSyntaxNodes()
         ).to.eventually.be.instanceOf(Array).that.has.length(41);
     });
 
     test("Match Syntax Node (failure)", function () {
-        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
+        db.setPaths(yamlPath, jsonPath);
         // db.rebuildAppData();
         return expect(db.matchSyntaxNode(['wrong'])).to.eventually.be.eql(null);
     });
 
     test("Match Syntax Node (success)", function () {
-        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
+        db.setPaths(yamlPath, jsonPath);
         // db.rebuildAppData();
         // db.matchSyntaxNode(['Kernels','AllenCahn']).then(value => {
         //     console.log(value);
         // });
         return expect(db.matchSyntaxNode(['Kernels', 'AllenCahn'])
         ).to.eventually.have.property('node').which.has.keys(
-            ['name', 'description', 'parameters', 'subblocks']);
+            ['name', 'description', 'parameters', 'subblocks', 'file']);
     });
 
     test("fetch Parameter List (failure)", function () {
-        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
+        db.setPaths(yamlPath, jsonPath);
         return expect(db.fetchParameterList(['non-existent'])
         ).to.eventually.be.instanceof(Array).that.has.length(0);
     });
 
     test("fetch Parameter List (success)", function () {
-        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
+        db.setPaths(yamlPath, jsonPath);
         // db.rebuildAppData();
         // db.fetchParameterList(['Kernels','AllenCahn']).then(value => {
         //     console.log(value);
@@ -115,7 +120,7 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("fetch Parameter List (success for typed path)", function () {
-        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
+        db.setPaths(yamlPath, jsonPath);
         // db.rebuildAppData();
         // db.fetchParameterList(['Mesh'], 'AnnularMesh').then(value => {
         //     console.log(value);
@@ -132,7 +137,7 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("get syntax blocks", function () {
-        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
+        db.setPaths(yamlPath, jsonPath);
         // db.getSyntaxBlocks(["Adaptivity"]).then(value => {
         //     console.log(value);
         // }); 
@@ -143,7 +148,7 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("get syntax blocks (with path)", function () {
-        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
+        db.setPaths(yamlPath, jsonPath);
         // db.getSyntaxBlocks(["Modules", "PhaseField"]).then(value => {
         //     console.log(value);
         // }); 

@@ -73,7 +73,7 @@ suite("MooseDoc Tests", function () {
         db = new moosedb.MooseSyntaxDB();
         // TODO is the best way to set the path?
         let ypath = ppath.resolve(__dirname, '../../src/test/syntax.yaml');
-        db.setYamlPath(ypath);
+        db.setPaths(ypath);
     });
 
     setup(function () {
