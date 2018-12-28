@@ -5,6 +5,7 @@
 // Please refer to their documentation on https://mochajs.org/ for help.
 //
 
+import * as ppath from 'path';
 // import * as assert from 'assert';
 import * as chai from 'chai';
 // import * as chaiThings from 'chai-things';
@@ -70,8 +71,9 @@ suite("MooseDoc Tests", function () {
 
     suiteSetup(function () {
         db = new moosedb.MooseSyntaxDB();
-        // TODO set path relative to tests
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        // TODO is the best way to set the path?
+        let ypath = ppath.resolve(__dirname, '../../src/test/syntax.yaml');
+        db.setYamlPath(ypath);
     });
 
     setup(function () {

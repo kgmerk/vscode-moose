@@ -5,6 +5,7 @@
 // Please refer to their documentation on https://mochajs.org/ for help.
 //
 
+import * as ppath from 'path';
 // import * as assert from 'assert';
 import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
@@ -17,6 +18,10 @@ var expect = chai.expect;
 // import * as vscode from 'vscode';
 import * as moosedb from '../moose_syntax';
 // import {appData, syntaxNode} from '../moose_objects';
+
+export function getPath(relpath: string) {
+    return ppath.resolve(__dirname, relpath);
+}
 
 // Defines a Mocha test suite to group tests of similar kind together
 suite("MooseSyntaxDB Tests", function () {
@@ -56,27 +61,27 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("Rebuild (bad yaml)", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/bad.yaml');
+        db.setYamlPath(getPath('../../src/test/bad.yaml'));
         // db.rebuildAppData();
         return expect(db.retrieveSyntaxNodes()).to.eventually.be.rejectedWith(Error);
         // TODO this logs a; rejected promise not handled within 1 second, is that ok?
     });
 
     test("Rebuild (success)", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
         // db.rebuildAppData();
         return expect(db.retrieveSyntaxNodes()
         ).to.eventually.be.instanceOf(Array).that.has.length(41);
     });
 
     test("Match Syntax Node (failure)", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
         // db.rebuildAppData();
         return expect(db.matchSyntaxNode(['wrong'])).to.eventually.be.eql(null);
     });
 
     test("Match Syntax Node (success)", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
         // db.rebuildAppData();
         // db.matchSyntaxNode(['Kernels','AllenCahn']).then(value => {
         //     console.log(value);
@@ -87,13 +92,13 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("fetch Parameter List (failure)", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
         return expect(db.fetchParameterList(['non-existent'])
         ).to.eventually.be.instanceof(Array).that.has.length(0);
     });
 
     test("fetch Parameter List (success)", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
         // db.rebuildAppData();
         // db.fetchParameterList(['Kernels','AllenCahn']).then(value => {
         //     console.log(value);
@@ -110,7 +115,7 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("fetch Parameter List (success for typed path)", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
         // db.rebuildAppData();
         // db.fetchParameterList(['Mesh'], 'AnnularMesh').then(value => {
         //     console.log(value);
@@ -127,7 +132,7 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("get syntax blocks", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
         // db.getSyntaxBlocks(["Adaptivity"]).then(value => {
         //     console.log(value);
         // }); 
@@ -138,7 +143,7 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("get syntax blocks (with path)", function () {
-        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        db.setYamlPath(getPath('../../src/test/syntax.yaml'));
         // db.getSyntaxBlocks(["Modules", "PhaseField"]).then(value => {
         //     console.log(value);
         // }); 
