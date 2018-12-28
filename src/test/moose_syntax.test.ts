@@ -150,7 +150,7 @@ suite("MooseSyntaxDB Tests", function () {
         return expect(db.getSubBlocks(["Modules", "PhaseField"])
         ).to.eventually.be.instanceof(Array).that.eqls(
             [
-                "Modules/PhaseField/Conserved",
+                "Modules/PhaseField/Conservedx",
                 "Modules/PhaseField/Conserved/*",
                 "Modules/PhaseField/MortarPeriodicity",
                 "Modules/PhaseField/MortarPeriodicity/*",
