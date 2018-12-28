@@ -168,14 +168,15 @@
     "@types/chai": "^4.1.7",
     "@types/chai-as-promised": "^7.1.0",
     "@types/node": "^8.10.25",
-    "path-parse": "^1.0.6",
+    "@types/js-yaml": "3.11.4",
+    "@types/path-parse": "^1.0.6",
     "tslint": "^5.8.0",
     "typescript": "^3.1.4",
     "vscode": "^1.1.25"
   },
   "dependencies": {
     "glob-to-regexp": "^0.4.0",
-    "@types/glob-to-regexp": "^0.4.0",
-    "path-parse": "^1.0.6"
+    "path-parse": "^1.0.6",
+    "js-yaml": "^3.11.4"
   }
 }

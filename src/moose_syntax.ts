@@ -60,12 +60,12 @@ export class MooseSyntaxDB {
     // }
 
     // TODO add additional debug / error handlers in constructor (store as attributes and require a particular interface)
-    private logDebug(message: string) {
-        console.log("Moose Objects: " + message);
-    }
-    private logError(err: Error) {
-        console.warn("Moose Objects: " + err.message);
-    }
+    // private logDebug(message: string) {
+    //     console.log("Moose Objects: " + message);
+    // }
+    // private logError(err: Error) {
+    //     console.warn("Moose Objects: " + err.message);
+    // }
 
     /**
      * set the path path to the yaml syntax file, output by `./moose-app --yaml {--allow-test-objects}`
