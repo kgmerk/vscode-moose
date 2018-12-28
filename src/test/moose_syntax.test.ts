@@ -99,7 +99,14 @@ suite("MooseSyntaxDB Tests", function () {
         //     console.log(value);
         // });     
         return expect(db.fetchParameterList(['Kernels', 'AllenCahn'])
-        ).to.eventually.be.instanceof(Array).that.has.length(17);
+        ).to.eventually.be.an('array').that.has.length(17).and.deep.include({
+            name: "args",
+            required: "No",
+            default: "",
+            cpp_type: "std::vector<VariableName>",
+            group_name: null,
+            description: "Vector of arguments of the mobility\n"
+        });
     });
 
     test("fetch Parameter List (success for typed path)", function () {
@@ -109,7 +116,14 @@ suite("MooseSyntaxDB Tests", function () {
         //     console.log(value);
         // });     
         return expect(db.fetchParameterList(['Mesh'], 'AnnularMesh')
-        ).to.eventually.be.instanceof(Array).that.has.length(37);
+        ).to.eventually.be.an('array').that.has.length(37).and.deep.include({
+            name: "enable",
+            required: "No",
+            default: "1",
+            cpp_type: "bool",
+            group_name: "Advanced",
+            description: "Set the enabled status of the MooseObject.\n"
+        });
     });
 
     test("get syntax blocks", function () {

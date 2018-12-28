@@ -187,8 +187,8 @@ export class MooseDoc {
                 if (tagContent[0] !== '.' && tagContent[0] !== '..') {
                     break;
                 }
-                // test for a type parameter
-                // } else if (blockType.test(line)) {
+            // test for a type parameter
+            // } else if (blockType.test(line)) {
             } else if (blockArray !== null) {
                 types.push({ config: [], name: blockArray[1] });
             }
@@ -254,7 +254,7 @@ export class MooseDoc {
         // go over all possible syntax sub-blocks of the config path
         let syntax = await this.syntaxdb.getSubBlocks(configPath);
 
-        for (let suggestionText in syntax) {
+        for (let suggestionText of syntax) {
             let suggestion = suggestionText.split('/');
 
             completion = suggestion[configPath.length];

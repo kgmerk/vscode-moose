@@ -41,6 +41,8 @@ export interface appData {
     promise?: Promise<syntaxNode[]>;
   }
 
+// TODO the yaml file does not include descriptions for types, but the json does
+
 /**
  * A class to manage the MOOSE syntax nodes for an app
  * 
