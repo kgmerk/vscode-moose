@@ -1,11 +1,10 @@
 'use strict';
 
 //
-// Note: This example test is leveraging the Mocha test framework.
+// Note: These tests are leveraging the Mocha test framework.
 // Please refer to their documentation on https://mochajs.org/ for help.
 //
 
-// The module 'assert' provides assertion methods from node
 // import * as assert from 'assert';
 import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
@@ -16,23 +15,26 @@ var expect = chai.expect;
 // You can import and use all API from the 'vscode' module
 // as well as import your extension to test it
 // import * as vscode from 'vscode';
-import * as moosedb from '../moose_objects';
+import * as moosedb from '../moose_syntax';
 // import {appData, syntaxNode} from '../moose_objects';
 
 // Defines a Mocha test suite to group tests of similar kind together
-suite("MooseObjectsDB Tests", function () {
+suite("MooseSyntaxDB Tests", function () {
 
+    // TODO these tests don't rely on vscode, so can we simplify test config (to not launch vscode)
     // TODO how to specify relative data path for test?
     // TODO how to that an object (or all objects in an array) matches an interface?
+    // possibly look at chai-like, chai-things, chai-interface
+    // chai-interface doesn't have @types/chai-interface
 
-    var db: moosedb.MooseObjectsDB;
+    var db: moosedb.MooseSyntaxDB;
 
     // setup before each test (NB: use SuiteSetup for setup for whole suite)
-    setup(function() {
+    setup(function () {
         // console.log("setup test")
-        db = new moosedb.MooseObjectsDB();
+        db = new moosedb.MooseSyntaxDB();
     });
-    teardown(function() {
+    teardown(function () {
         // console.log("teardown test")
     });
 
@@ -42,7 +44,7 @@ suite("MooseObjectsDB Tests", function () {
 
     test("Rebuild (non-existent yaml)", function () {
         assert.throws(() => db.setYamlPath('non-existent'), Error);
- 
+
         // old way to do it without chaiAsPromised
         // if (db.appdata.promise !== undefined) {
         //     return db.appdata.promise
@@ -52,11 +54,12 @@ suite("MooseObjectsDB Tests", function () {
         //         );
         // }
     });
- 
+
     test("Rebuild (bad yaml)", function () {
         db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/bad.yaml');
         // db.rebuildAppData();
         return expect(db.retrieveSyntaxNodes()).to.eventually.be.rejectedWith(Error);
+        // TODO this logs a; rejected promise not handled within 1 second, is that ok?
     });
 
     test("Rebuild (success)", function () {
@@ -78,9 +81,15 @@ suite("MooseObjectsDB Tests", function () {
         // db.matchSyntaxNode(['Kernels','AllenCahn']).then(value => {
         //     console.log(value);
         // });
-        return expect(db.matchSyntaxNode(['Kernels','AllenCahn'])
+        return expect(db.matchSyntaxNode(['Kernels', 'AllenCahn'])
         ).to.eventually.have.property('node').which.has.keys(
             ['name', 'description', 'parameters', 'subblocks']);
+    });
+
+    test("fetch Parameter List (failure)", function () {
+        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        return expect(db.fetchParameterList(['non-existent'])
+        ).to.eventually.be.instanceof(Array).that.has.length(0);
     });
 
     test("fetch Parameter List (success)", function () {
@@ -89,7 +98,7 @@ suite("MooseObjectsDB Tests", function () {
         // db.fetchParameterList(['Kernels','AllenCahn']).then(value => {
         //     console.log(value);
         // });     
-        return expect(db.fetchParameterList(['Kernels','AllenCahn'])
+        return expect(db.fetchParameterList(['Kernels', 'AllenCahn'])
         ).to.eventually.be.instanceof(Array).that.has.length(17);
     });
 
@@ -101,6 +110,33 @@ suite("MooseObjectsDB Tests", function () {
         // });     
         return expect(db.fetchParameterList(['Mesh'], 'AnnularMesh')
         ).to.eventually.be.instanceof(Array).that.has.length(37);
+    });
+
+    test("get syntax blocks", function () {
+        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        // db.getSyntaxBlocks(["Adaptivity"]).then(value => {
+        //     console.log(value);
+        // }); 
+        return expect(db.getSubBlocks(["Adaptivity"])
+        ).to.eventually.be.instanceof(Array).that.eqls(
+            ["Adaptivity/Indicators", "Adaptivity/Indicators/*",
+                "Adaptivity/Markers", "Adaptivity/Markers/*"]);
+    });
+
+    test("get syntax blocks (with path)", function () {
+        db.setYamlPath('/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml');
+        // db.getSyntaxBlocks(["Modules", "PhaseField"]).then(value => {
+        //     console.log(value);
+        // }); 
+        return expect(db.getSubBlocks(["Modules", "PhaseField"])
+        ).to.eventually.be.instanceof(Array).that.eqls(
+            [
+                "Modules/PhaseField/Conserved",
+                "Modules/PhaseField/Conserved/*",
+                "Modules/PhaseField/MortarPeriodicity",
+                "Modules/PhaseField/MortarPeriodicity/*",
+                "Modules/PhaseField/Nonconserved",
+                "Modules/PhaseField/Nonconserved/*"]);
     });
 
 });

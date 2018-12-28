@@ -1,13 +1,17 @@
+/**
+ * A module to manage the MOOSE syntax nodes for an app
+ */
 'use strict';
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as ppath from 'path';
 
+// markeres to remove at the beginning and end of the file
 const beginMarker = '**START YAML DATA**\n';
 const endMarker = '**END YAML DATA**\n';
 
-// interface for dictionary returned by ./app --yaml
+// interface for dictionary returned by ./moose-app --yaml
 export interface paramNode {
     name: string;
     required: boolean;
@@ -15,6 +19,7 @@ export interface paramNode {
     cpp_type: string;
     group_name: string | null;
     description: string;
+    options?: string | null;
   }
   export interface syntaxNode {
     name: string;
@@ -30,16 +35,18 @@ export interface nodeMatch {
     fuzzyOnLast: boolean;
   }
 
-// data for a specific app
+// interface of data for a specific app
 export interface appData {
     data?: syntaxNode[];
     promise?: Promise<syntaxNode[]>;
   }
 
-export class MooseObjectsDB {
-    /**
-     * A class to manage the MOOSE objects for an app
-     */
+/**
+ * A class to manage the MOOSE syntax nodes for an app
+ * 
+ * This class is agnostic to the implementing program
+ */
+export class MooseSyntaxDB {
 
     // path to the yaml syntax file, output by ./moose-app --yaml {--allow-test-objects}
     private yaml_path: string | null = null;
@@ -50,7 +57,7 @@ export class MooseObjectsDB {
     //     this.yaml_path = null;
     // }
 
-    // TODO add additional debug / error handlers in constructor (store as attributes)
+    // TODO add additional debug / error handlers in constructor (store as attributes and require a particular interface)
     private logDebug(message: string) {
         console.log("Moose Objects: " + message);
     }
@@ -58,11 +65,14 @@ export class MooseObjectsDB {
         console.warn("Moose Objects: " + err.message);
     }
 
-    // set yaml path and (if set) rebuild app data
+    /**
+     * set the path path to the yaml syntax file, output by `./moose-app --yaml {--allow-test-objects}`
+     * 
+     * If set, also call rebuild of app data
+     * 
+     * @param path 
+     */
     public setYamlPath(path: string){
-        // if (this.yaml_path !== null) {
-        //     throw Error("the path is already set");
-        // }
         // check exists before assigning
         if (!fs.existsSync(path)){
             throw Error("the path does not exist: "+path);
@@ -84,7 +94,9 @@ export class MooseObjectsDB {
         return this.yaml_path;
     }
     
-    // reload the app data
+    /**
+     * reload the app data from the yaml path
+     */
     public rebuildAppData(){
 
         // read the file
@@ -129,19 +141,23 @@ export class MooseObjectsDB {
         
         // handle load errors
         load_yaml.catch(error => {
-            throw error;
+            throw Error(String(error));
         });
 
         let finishSyntaxSetup = load_yaml.then(result => {
             delete this.appdata.promise;
             this.appdata.data = result;
             return result;
+          }).catch(error => {
+            throw Error(String(error));
           });
 
         this.appdata.promise = finishSyntaxSetup;
  
     }
 
+    /** retrieve a list of all root syntax nodes
+     */
     public retrieveSyntaxNodes() {
         var data_promise: Promise<syntaxNode[]>;
         if (this.appdata.promise !== undefined) {
@@ -156,7 +172,8 @@ export class MooseObjectsDB {
         return data_promise;
     }
  
-    // recurse through the nodes sub-blocks to populate a match list 
+    /** recurse through the nodes sub-blocks to populate a match list 
+    */
     private recurseSyntaxNode(node: syntaxNode, configPath: string[], matchList: nodeMatch[]) {
         let yamlPath = node.name.substr(1).split('/');
     
@@ -202,7 +219,14 @@ export class MooseObjectsDB {
         }
       }
 
+    /**
+     * finds a match for a syntax node
+     * 
+     * @param  {string[]} configPath path to the node
+     * @returns a promise of a nodeMatch or null if no match found
+     */
     public async matchSyntaxNode(configPath: string[]) {
+       
         // we need to match this to one node in the yaml tree. multiple matches may
         // occur we will later select the most specific match
         let data = await this.retrieveSyntaxNodes();
@@ -227,8 +251,9 @@ export class MooseObjectsDB {
           
     }
 
-    // add the /Type (or /<type>/Type for top level blocks) pseudo path
-    // if we are inside a typed block
+    /** add the `/Type` (or `/<type>/Type` for top level blocks) pseudo path
+    * if we are inside a typed block
+    */
     private getTypedPath(configPath: string[], type: null | string, fuzzyOnLast: boolean) {
         let typedConfigPath = configPath.slice();
 
@@ -244,7 +269,11 @@ export class MooseObjectsDB {
         return typedConfigPath;
     }
 
-    // fetch a list of valid parameters for the current config path
+    /** fetch a list of valid parameters for a syntax path
+     * 
+     * @param  {string[]} configPath
+     * @param  {null|string} explicitType
+     */
     public async fetchParameterList(configPath: string[], explicitType: null | string = null) {
 
         // parameters cannot exist outside of top level blocks
@@ -291,5 +320,61 @@ export class MooseObjectsDB {
         return paramList;
             
     }
+
+    /**
+     * 
+     * @param node root node
+     * @param basePath the required base path
+     * @param matchList 
+     */
+    private recurseSubBlocks(node: syntaxNode, basePath: string[], matchList: string[]) {
+
+        let yamlPath = node.name.substr(1).split('/');
+
+        // return if not matching base path 
+        let length = basePath.length <= yamlPath.length ?  basePath.length : yamlPath.length;
+        let match = true;
+        for (let index = 0; index < length; index++) {
+            if (yamlPath[index] !== '*' && yamlPath[index] !== basePath[index]) {
+                match = false;
+                break;
+            }
+        }
+        if (!match){return;}
+
+        // if (yamlPath.slice(0, length).join('/') !== basePath.slice(0, length).join('/')) {
+        //     return;
+        // }
+
+        if ((node.subblocks !== null && yamlPath[yamlPath.length-1] !== '<type>') || (yamlPath[yamlPath.length-1] === '*')) {
+            let name = node.name.substr(1);
+            if (basePath.length < yamlPath.length && matchList.findIndex(value => value === name) === -1){
+                matchList.push(node.name.substr(1));
+            }  
+        } 
+        if (node.subblocks !== null && yamlPath[yamlPath.length-1] !== '<type>') {
+            node.subblocks.map(subNode => this.recurseSubBlocks(subNode, basePath, matchList));
+        }
+
+      }
+    
+    /** get a list of possible sub block paths for a base path
+     * 
+     * @param basePath the required base path
+     */
+    public async getSubBlocks(basePath: string[] = []) {
+        // TODO strictly should use `./moose-app --syntax` output
+
+        let data = await this.retrieveSyntaxNodes();
+        let matchList: string[] = [];
+
+        for (let node of data) {
+            this.recurseSubBlocks(node, basePath, matchList);
+        }
+
+        return matchList;
+    }
+
+    
 
 }
