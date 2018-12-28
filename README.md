@@ -1,3 +1,5 @@
+[![Build Status](https://dev.azure.com/chrisjsewell/vscode/_apis/build/status/chrisjsewell.vscode-moose?branchName=master)](https://dev.azure.com/chrisjsewell/vscode/_build/latest?definitionId=1?branchName=master)
+
 # VSCode for MOOSE
 
 This extension provides language support and IntelliSense for input files of MOOSE (Multiphysics Object Oriented Simulation Environment) applications.
