@@ -90,13 +90,14 @@ suite("MooseDoc Tests", function () {
         // });
         return expect(mdoc.findCompletions(cursor)
         ).to.eventually.be.an('array').that.has.length(37).and.deep.include({
-            text:"[ADKernels",
-            displayText:"ADKernels",
-            replacementPrefix:"["            
+            kind: "block",
+            text: "[ADKernels",
+            displayText: "ADKernels",
+            replacementPrefix: "["
         });
     });
 
-    test("Completion; type parameter", function () {
+    test("Completion; type value", function () {
         doc.text = `
 [Kernels]
     [./akernel]
@@ -110,13 +111,14 @@ suite("MooseDoc Tests", function () {
         // });
         return expect(mdoc.findCompletions(cursor)
         ).to.eventually.be.an('array').that.has.length(116).and.deep.include({
+            kind: "type",
             text: "ACBarrierFunction",
             description: "",
-            replacementPrefix: ""   
+            replacementPrefix: ""
         });
     });
 
-    test("Completion; parameter completion", function () {
+    test("Completion; parameter name", function () {
         doc.text = `
 [Kernels]
     [./akernel]
@@ -131,11 +133,110 @@ suite("MooseDoc Tests", function () {
         // });
         return expect(mdoc.findCompletions(cursor)
         ).to.eventually.be.an('array').that.has.length(20).and.deep.include({
-            displayText:"variable",
-            snippet:"variable = ${1:}",
-            description:"The name of the variable that this Kernel operates on\n",
-            icon:"required",
-            replacementPrefix:""  ,
+            kind: "parameter",
+            required: true,
+            displayText: "variable",
+            snippet: "variable = ${1:}",
+            description: "The name of the variable that this Kernel operates on\n",
+            replacementPrefix: "",
+        });
+    });
+
+    test("Completion; parameter value", function () {
+        doc.text = `
+[BCs]
+    [./akernel]
+        type = ACBarrierFunction
+        use_displaced_mesh = 
+    [../]
+[]
+        `;
+        let cursor = { row: 4, column: 30 };
+        // mdoc.findCompletions(cursor).then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.findCompletions(cursor)
+        ).to.eventually.eql([
+            {
+                kind: "value",
+                text: "true",
+                replacementPrefix: ""
+            },
+            {
+                kind: "value",
+                text: "false",
+                replacementPrefix: ""
+            }
+        ]);
+    });
+
+    test("Outline (with errors)", function () {
+        doc.text = `
+[]
+[Kernels]
+    [./v1]
+    [../]
+
+[Kernels]
+    [./akernel]
+        type = ACBarrierFunction
+        use_displaced_mesh = 1
+    [../]
+
+        `;
+        // mdoc.assessOutline().then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.assessOutline()).to.eventually.eql({
+            outline: [{
+                name: "Kernels",
+                kind: "block",
+                description: "",
+                level: 1,
+                start: 2, end: 5,
+                children: [{
+                    name: "v1",
+                    description: "",
+                    kind: "block",
+                    level: 2,
+                    start: 3, end: 4,
+                    children: []
+                }]
+            },
+            {
+                name: "Kernels",
+                kind: "block",
+                description: "",
+                level: 1,
+                start: 6, end: 13,
+                children: [{
+                    name: "akernel",
+                    description: "",
+                    kind: "block",
+                    level: 2,
+                    start: 7, end: 10,
+                    children: []
+                }]
+            }],
+            errors: [{
+                row: 1,
+                msg: "closed block before opening one",
+                insertionBefore: "[${1:name}]\n"
+            },
+            {
+                row: 6,
+                msg: "block opened before previous closed",
+                insertionBefore: "[]\n"
+            },
+            {
+                row: 6,
+                msg: "duplicate block name"
+            },
+            {
+                row: 13,
+                msg: "block(s) unclosed",
+                insertionAfter: "[]\n"
+            }]
         });
     });
 

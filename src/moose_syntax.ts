@@ -14,7 +14,7 @@ const endMarker = '**END YAML DATA**\n';
 // interface for dictionary returned by ./moose-app --yaml
 export interface paramNode {
     name: string;
-    required: boolean;
+    required: "Yes" | "No";
     default: string;
     cpp_type: string;
     group_name: string | null;
