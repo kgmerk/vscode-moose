@@ -1,5 +1,5 @@
 [![Build Status](https://dev.azure.com/chrisjsewell/vscode/_apis/build/status/chrisjsewell.vscode-moose?branchName=master)](https://dev.azure.com/chrisjsewell/vscode/_build/latest?definitionId=1?branchName=master)
-![](https://img.shields.io/vscode-marketplace/v/chrisjsewell.moose.svg)
+[![VSCode](https://img.shields.io/vscode-marketplace/v/chrisjsewell.moose.svg)](https://marketplace.visualstudio.com/items?itemName=chrisjsewell.moose)
 
 # VSCode for MOOSE
 
