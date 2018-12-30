@@ -30,6 +30,23 @@ export class VSDoc implements Document {
     }
 }
 
+function getPaths(wrkPath: string) {
+    let yamlPath: string | null = null;
+    let jsonPath: string | null = null;
+
+    let config = vscode.workspace.getConfiguration('moose.syntax');
+    if (config.get('yaml', null) !== null) {
+        yamlPath = config.get('yaml', '');
+        yamlPath = yamlPath.replace("${workspaceFolder}", wrkPath);
+    }
+    if (config.get('json', null) !== null) {
+        jsonPath = config.get('json', '');
+        jsonPath = jsonPath.replace("${workspaceFolder}", wrkPath);
+    }
+    // TODO resolve relative paths?
+    return { yamlPath: yamlPath, jsonPath: jsonPath }
+}
+
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -51,35 +68,18 @@ export function activate(context: vscode.ExtensionContext) {
     syntaxDB.setErrorHandles(
         [error => vscode.window.showErrorMessage("Moose for VBCode: " + error.message)]);
 
-    function getPaths() {
-        let yamlPath: string | null = null;
-        let jsonPath: string | null = null;
-
-        let config = vscode.workspace.getConfiguration('moose.syntax');
-        if (config.get('yaml', null) !== null) {
-            yamlPath = config.get('yaml', '');
-            yamlPath = yamlPath.replace("${workspaceFolder}", wrkPath);
-        }
-        if (config.get('json', null) !== null) {
-            jsonPath = config.get('json', '');
-            jsonPath = jsonPath.replace("${workspaceFolder}", wrkPath);
-        }
-        // TODO resolve relative paths?
-        return { yamlPath: yamlPath, jsonPath: jsonPath }
-    }
-
     function updateDBPaths() {
-        let { yamlPath, jsonPath } = getPaths();
+        let { yamlPath, jsonPath } = getPaths(wrkPath);
         syntaxDB.setPaths(yamlPath, jsonPath);
     }
     updateDBPaths();
 
-    // allow manual reset of MOOSE syntax DB
+    // Command: allow manual reset of MOOSE syntax DB
     context.subscriptions.push(
         vscode.commands.registerCommand('moose.ResetMooseObjects', () => {
             syntaxDB.rebuildAppData();
         }));
-    // create MOOSE syntax files
+    // Command: create MOOSE syntax files
     context.subscriptions.push(
         vscode.commands.registerCommand('moose.createFiles', async () => {
 
