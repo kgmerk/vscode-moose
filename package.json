@@ -39,96 +39,12 @@
         "moose.syntax.yaml": {
           "type": "string",
           "description": "specifies path of syntax.yaml file",
-          "default": "/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml"
+          "default": "${workspaceFolder}/syntax.yaml"
         },
         "moose.syntax.json": {
           "type": "string",
           "description": "specifies path of syntax.json file",
-          "default": "/Users/cjs14/GitHub/vscode-moose/src/test/syntax.json"
-        },
-        "moose.exclude.workspaces": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Specifies the workspace regexes to ignore when searching for MOOSE objects"
-        },
-        "moose.exclude.relpaths": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "**/test/**/*",
-            "**/examples/**/*",
-            "**/tutorials/**/*",
-            "**/.git/**/*",
-            "**/node_modules/**/*",
-            "**/libmesh/**/*",
-            "**/main.C"
-          ],
-          "description": "Specifies the path regexes (relative to workspaces) to ignore when searching for MOOSE objects"
-        },
-        "moose.include.modules": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "phase_field",
-            "tensor_mechanics"
-          ],
-          "description": "Specifies the MOOSE module folders to search in for MOOSE Objects (**/modules/<MODULE>/src/<TYPE>/*.C)"
-        },
-        "moose.include.types": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "auxkernels",
-            "kernels",
-            "materials",
-            "postprocessors",
-            "vectorpostprocessors",
-            "bcs",
-            "ics",
-            "mesh",
-            "timesteppers",
-            "functions",
-            "preconditioners",
-            "executioners"
-          ],
-          "description": "Specifies the src subfolders to search in for MOOSE Objects (**/framework/src/<TYPE>/*.C)"
-        },
-        "moose.include.relpaths": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "src/**/*.C"
-          ],
-          "description": "Specifies additional path regexes (relative to workspaces) to search for MOOSE objects"
-        },
-        "moose.object.alias": {
-          "type": "object",
-          "patternProperties": {
-            "*": {
-              "type": "string"
-            }
-          },
-          "default": {
-            "MooseParsedFunction": "ParsedFunction",
-            "MooseParsedGradFunction": "ParsedGradFunction",
-            "MooseParsedVectorFunction": "ParsedVectorFunction",
-            "SingleMatrixPreconditioner": "SMP",
-            "FieldSplitPreconditioner": "FSP",
-            "FiniteDifferencePreconditioner": "FDP",
-            "PhysicsBasedPreconditioner": "PBP"
-          },
-          "description": "Name aliases of objects, i.e. set by registerMooseObjectAliased"
+          "default": "${workspaceFolder}/syntax.json"
         }
       }
     },

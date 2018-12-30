@@ -51,6 +51,7 @@ export class MooseSyntaxDB {
     private jsonNodes: Promise<JsonNode> | null = null;
     // handles to deal with logging and errors
     private logHandles: ((message: string) => void)[] = [];
+    private warnHandles: ((error: Error) => void)[] = [];
     private errHandles: ((error: Error) => void)[] = [];
 
     private handleLog(message: string) {
@@ -61,6 +62,16 @@ export class MooseSyntaxDB {
     /** set list of functions to handle error messages (e.g. console.log) */
     public setLogHandles(handles: ((message: string) => void)[]) {
         this.logHandles = handles;
+    }
+
+    private handleWarning(err: Error) {
+        for (let handle of this.warnHandles) {
+            handle(err);
+        }
+    }
+    /** set list of functions to handle error messages (e.g. console.warn) */
+    public setWarningHandles(handles: ((error: Error) => void)[]) {
+        this.warnHandles = handles;
     }
 
     private handleError(err: Error) {
@@ -88,7 +99,7 @@ export class MooseSyntaxDB {
         if (ypath !== null) {
             if (!fs.existsSync(ypath)) {
                 let err = Error("the yaml path does not exist: " + ypath);
-                this.handleError(err);
+                this.handleWarning(err);
                 // throw err;
             } else {
                 let new_yaml = ppath.resolve(ypath);
@@ -103,7 +114,7 @@ export class MooseSyntaxDB {
         if (jpath !== null) {
             if (!fs.existsSync(jpath)) {
                 let err = Error("the json path does not exist: " + jpath);
-                this.handleError(err);
+                this.handleWarning(err);
                 // throw err;
             } else {
                 let new_json = ppath.resolve(jpath);
@@ -131,7 +142,7 @@ export class MooseSyntaxDB {
         let { yamlPath, jsonPath } = this.getPaths();
 
         if (yamlPath === null) {
-            let err = Error("no yaml data path set");
+            let err = Error("no syntax (yaml) data path set");
             this.handleError(err);
             // throw err;
             return;
@@ -141,7 +152,7 @@ export class MooseSyntaxDB {
             if (this.syntaxNodes !== null) {
                 this.syntaxNodes.then(value => {
                     this.handleLog("Loaded Syntax Nodes");
-                }).catch(reason => this.handleError(Error(reason)));
+                }).catch(reason => this.handleWarning(Error(reason)));
             }
         }
 
@@ -150,7 +161,7 @@ export class MooseSyntaxDB {
             if (this.jsonNodes !== null) {
                 this.jsonNodes.then(value => {
                     this.handleLog("Loaded JSON Nodes");
-                }).catch(reason => this.handleError(Error(reason)));
+                }).catch(reason => this.handleWarning(Error(reason)));
             }
         }
 
@@ -161,9 +172,9 @@ export class MooseSyntaxDB {
     public retrieveSyntaxNodes() {
         if (this.syntaxNodes === null) {
             let err = Error("syntax data not set");
-            this.handleError(err);
-            // throw err;
-            return new Promise<SyntaxNode[]>(resolve => { return [] as SyntaxNode[]; });
+            this.handleWarning(err);
+            throw err;
+            // return new Promise<SyntaxNode[]>(resolve => { return [] as SyntaxNode[]; });
         }
         // this.syntaxNodes.catch(reason => this.handleError(Error(reason)));
         return this.syntaxNodes;

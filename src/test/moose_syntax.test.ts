@@ -41,6 +41,7 @@ suite("MooseSyntaxDB Tests", function () {
         // console.log("setup test")
         db = new moosedb.MooseSyntaxDB();
         db.setLogHandles([]);
+        db.setWarningHandles([console.warn]);
         db.setErrorHandles([console.warn]);
         yamlPath = getPath('../../src/test/syntax.yaml');
         jsonPath = getPath('../../src/test/syntax.json');
@@ -55,11 +56,13 @@ suite("MooseSyntaxDB Tests", function () {
     });
 
     test("Rebuild (non-existent yaml)", function () {
+        db.setWarningHandles([]);
         db.setErrorHandles([(err: Error) => {throw err;}]);
         return assert.throws(() => db.setPaths('non-existent'), Error);
     });
 
     test("Rebuild (bad yaml)", function () {
+        db.setWarningHandles([]);
         db.setErrorHandles([]);
         db.setPaths(getPath('../../src/test/bad.yaml'));
         return expect(db.retrieveSyntaxNodes()).to.eventually.be.rejectedWith(Error);

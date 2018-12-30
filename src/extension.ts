@@ -39,12 +39,26 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Initialise MOOSE syntax DB
     var syntaxDB = new MooseSyntaxDB();
-    syntaxDB.setLogHandles([console.log]);
+    // syntaxDB.setLogHandles([console.log]);
+    // syntaxDB.setWarningHandles([err => console.warn(err.message)]);
     syntaxDB.setErrorHandles(
         [error => vscode.window.showWarningMessage("Moose for VBCode: " + error.message)]);
     function updateDBPaths() {
-        let yamlPath = vscode.workspace.getConfiguration('moose.syntax').get('yaml', null);
-        let jsonPath = vscode.workspace.getConfiguration('moose.syntax').get('json', null);
+        let wrkPath = "";
+        let yamlPath: string | null = null;
+        let jsonPath: string | null = null;
+        if (vscode.workspace.workspaceFolders){
+            wrkPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        }
+        let config = vscode.workspace.getConfiguration('moose.syntax');
+        if (config.get('yaml', null) !== null) {
+            yamlPath = config.get('yaml', '');
+            yamlPath = yamlPath.replace("${workspaceFolder}", wrkPath);
+        }
+        if (config.get('json', null) !== null) {
+            jsonPath = config.get('json', '');
+            jsonPath = jsonPath.replace("${workspaceFolder}", wrkPath);
+        }
         // TODO resolve relative paths?
         syntaxDB.setPaths(yamlPath, jsonPath);
     }
@@ -62,8 +76,8 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(config_change);
 
-    // let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {updateDBPaths();});
-    // context.subscriptions.push(workspace_change);
+    let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {updateDBPaths();});
+    context.subscriptions.push(workspace_change);
 
     function checkPath(filePath: vscode.Uri) {
 
@@ -95,7 +109,7 @@ export function activate(context: vscode.ExtensionContext) {
     let mooseDoc = new MooseDoc(syntaxDB);
 
     // register all functionality providers
-    // See https://code.visualstudio.com/api/language-extensions/programmatic-language-features
+    // See: https://code.visualstudio.com/api/language-extensions/programmatic-language-features
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider(
@@ -115,10 +129,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     let linter = new CodeActionsProvider(mooseDoc, context.subscriptions);
     vscode.languages.registerCodeActionsProvider('moose', linter);
-
-    // context.subscriptions.push(
-    //     vscode.languages.registerCodeActionsProvider(
-    //         moose_selector, new CodeActionsProvider(mooseDoc)));
 
     // context.subscriptions.push(
     //     vscode.languages.registerReferenceProvider(
