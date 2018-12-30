@@ -45,6 +45,11 @@
           "type": "string",
           "description": "specifies path of syntax.json file",
           "default": "${workspaceFolder}/syntax.json"
+        },
+        "moose.log.debug": {
+          "type": "boolean",
+          "description": "whether to log debug and warning messages to the console",
+          "default": false
         }
       }
     },
@@ -52,6 +57,10 @@
       {
         "command": "moose.ResetMooseObjects",
         "title": "MOOSE: Reset MOOSE Objects Database"
+      },
+      {
+        "command": "moose.createFiles",
+        "title": "MOOSE: Create MOOSE syntax files"
       }
     ],
     "languages": [

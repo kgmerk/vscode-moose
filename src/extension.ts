@@ -36,20 +36,24 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('Activated MOOSE for VSCode extension');
 
     var moose_selector = { scheme: 'file', language: "moose" };
+    let wrkPath = "";
+    if (vscode.workspace.workspaceFolders) {
+        wrkPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+    }
 
     // Initialise MOOSE syntax DB
     var syntaxDB = new MooseSyntaxDB();
-    // syntaxDB.setLogHandles([console.log]);
-    // syntaxDB.setWarningHandles([err => console.warn(err.message)]);
+    if (vscode.workspace.getConfiguration('moose.log').get('debug', false)) {
+        syntaxDB.setLogHandles([console.log]);
+        syntaxDB.setWarningHandles([err => console.warn(err.message)]);
+    }
     syntaxDB.setErrorHandles(
-        [error => vscode.window.showWarningMessage("Moose for VBCode: " + error.message)]);
+        [error => vscode.window.showErrorMessage("Moose for VBCode: " + error.message)]);
+
     function updateDBPaths() {
-        let wrkPath = "";
         let yamlPath: string | null = null;
         let jsonPath: string | null = null;
-        if (vscode.workspace.workspaceFolders){
-            wrkPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-        }
+
         let config = vscode.workspace.getConfiguration('moose.syntax');
         if (config.get('yaml', null) !== null) {
             yamlPath = config.get('yaml', '');
@@ -69,6 +73,25 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('moose.ResetMooseObjects', () => {
             syntaxDB.rebuildAppData();
         }));
+    // create MOOSE syntax files
+    context.subscriptions.push(
+        vscode.commands.registerCommand('moose.createFiles', async () => {
+            
+            let uri = await vscode.window.showOpenDialog({
+                canSelectMany: false,
+                canSelectFolders: false,
+                openLabel: 'Select MOOSE App',
+                filters: {
+                    'All files': ['*']
+                }
+                });
+
+            if (uri === undefined){
+                return;
+            }
+            syntaxDB.createFiles(uri[0].fsPath);
+        }));
+
 
     // Keep MOOSE syntax DB up-to-date
     let config_change = vscode.workspace.onDidChangeConfiguration(event => {
@@ -76,7 +99,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(config_change);
 
-    let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {updateDBPaths();});
+    let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => { updateDBPaths(); });
     context.subscriptions.push(workspace_change);
 
     function checkPath(filePath: vscode.Uri) {
@@ -128,7 +151,7 @@ export function activate(context: vscode.ExtensionContext) {
             moose_selector, new DocumentSymbolProvider(mooseDoc)));
 
     let linter = new CodeActionsProvider(mooseDoc, context.subscriptions);
-    vscode.languages.registerCodeActionsProvider('moose', linter);
+    vscode.languages.registerCodeActionsProvider(moose_selector, linter);
 
     // context.subscriptions.push(
     //     vscode.languages.registerReferenceProvider(

@@ -137,64 +137,76 @@ export class MooseSyntaxDB {
 
     // TODO createFiles needs testing
     /** outputs a syntax.yaml and syntax.json file
+     * if a file path for either file is not set, will output to the same path as the application
      * 
-     * @param appPath the path to the MOOSE application 
-     * @param outPath if null will output to the same path as the application
+     * @param appPath the path to the MOOSE application executable
      * @param allowTestObjs adds the option --allow-test-objects
      */
-    public async createFiles(appPath: string, outPath: string | null = null, allowTestObjs: boolean = true) {
+    public async createFiles(appPath: string, allowTestObjs: boolean = false) {
 
+        console.log("creating files")
         const writeFile = util.promisify(fs.writeFile);
-        if (outPath === null) {
-            outPath = ppath.parse(appPath).dir;
-        }
+        let appDir = ppath.parse(appPath).dir;
 
-        // build yaml
-        let yamlData = "";
-        let yargs = ['--yaml'];
-        if (allowTestObjs) { yargs.push('--allow-test-objects'); }
-        let appYaml = cp.spawn(appPath, yargs, { stdio: ['pipe', 'pipe', 'ignore'] });
-
-        appYaml.stdout.on('data', data => yamlData += data);
-
+        // build yaml file
+        let yamlData: string = "";
         try {
-            yamlData = await new Promise<string>((resolve, reject) =>
+            yamlData = await new Promise<string>((resolve, reject) => {
+                let yamlData = "";
+                let yargs = ['--yaml'];
+                if (allowTestObjs) { yargs.push('--allow-test-objects'); }
+                let appYaml = cp.spawn(appPath, yargs, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+                appYaml.on('error', function (error) { return reject(error); });
+                appYaml.stdout.on('data', data => yamlData += data);
+                appYaml.stderr.on('data', data => console.warn(data));
                 appYaml.on('close', function (code, signal) {
                     if (code === 0) {
                         return resolve(yamlData);
                     } else {
                         return reject({ code, output: yamlData, appPath });
                     }
-                }));
+                }
+                );
+            });
+
         } catch (err) {
             this.handleError(err);
         }
 
-        await writeFile(ppath.join(outPath, "syntax.yaml"), yamlData, { encoding: "utf8" });
+        if (yamlData !== ""){
+            let outYPath = this.yaml_path === null ? ppath.join(appDir, "syntax.yaml") : this.yaml_path;
+            await writeFile(outYPath, yamlData, { encoding: "utf8" });
+        }
 
-        // build json
+        // build json file
         let jsonData = "";
-        let jargs = ['--json'];
-        if (allowTestObjs) { jargs.push('--allow-test-objects'); }
-        let appJson = cp.spawn(appPath, jargs, { stdio: ['pipe', 'pipe', 'ignore'] });
-
-        appJson.stdout.on('data', data => jsonData += data);
 
         try {
-            jsonData = await new Promise<string>((resolve, reject) =>
-                appYaml.on('close', function (code, signal) {
+            jsonData = await new Promise<string>((resolve, reject) => {
+                let jsonData = "";
+                let jargs = ['--json'];
+                if (allowTestObjs) { jargs.push('--allow-test-objects'); }
+                let appJson = cp.spawn(appPath, jargs, { stdio: ['pipe', 'pipe', 'ignore'] });
+
+                appJson.stdout.on('data', data => jsonData += data);
+
+                appJson.on('close', function (code, signal) {
                     if (code === 0) {
                         return resolve(jsonData);
                     } else {
                         return reject({ code, output: jsonData, appPath });
                     }
-                }));
+                });
+            });
         } catch (err) {
             this.handleError(err);
         }
 
-        await writeFile(ppath.join(outPath, "syntax.json"), jsonData, { encoding: "utf8" });
-
+        if (jsonData !== ""){
+            let outJPath = this.json_path === null ? ppath.join(appDir, "syntax.json") : this.json_path;
+            await writeFile(outJPath, jsonData, { encoding: "utf8" });    
+        }
     }
 
     /**
@@ -283,6 +295,7 @@ export class MooseSyntaxDB {
             '**START YAML DATA**\n', '**END YAML DATA**\n');
 
         // convert the content to syntax nodes
+        // TODO errors from this are not being caught properly
         let data: SyntaxNode[] = yaml.safeLoad(yaml_content);
 
         return data;
@@ -305,6 +318,7 @@ export class MooseSyntaxDB {
             '**START JSON DATA**\n', '**END JSON DATA**\n');
 
         // convert the content to syntax nodes
+        // TODO errors from this are not being caught properly
         let data: JsonNode = await JSON.parse(json_content);
 
         return data;
