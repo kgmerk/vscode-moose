@@ -5,6 +5,7 @@
 
 trigger:
 - master
+- new_api
 
 jobs:
 - job: Windows
