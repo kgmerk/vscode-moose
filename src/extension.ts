@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
     syntaxDB.setErrorHandles(
         [error => vscode.window.showErrorMessage("Moose for VBCode: " + error.message)]);
 
-    function updateDBPaths() {
+    function getPaths() {
         let yamlPath: string | null = null;
         let jsonPath: string | null = null;
 
@@ -64,6 +64,11 @@ export function activate(context: vscode.ExtensionContext) {
             jsonPath = jsonPath.replace("${workspaceFolder}", wrkPath);
         }
         // TODO resolve relative paths?
+        return { yamlPath: yamlPath, jsonPath: jsonPath }
+    }
+
+    function updateDBPaths() {
+        let { yamlPath, jsonPath } = getPaths();
         syntaxDB.setPaths(yamlPath, jsonPath);
     }
     updateDBPaths();
@@ -76,7 +81,7 @@ export function activate(context: vscode.ExtensionContext) {
     // create MOOSE syntax files
     context.subscriptions.push(
         vscode.commands.registerCommand('moose.createFiles', async () => {
-            
+
             let uri = await vscode.window.showOpenDialog({
                 canSelectMany: false,
                 canSelectFolders: false,
@@ -84,12 +89,12 @@ export function activate(context: vscode.ExtensionContext) {
                 filters: {
                     'All files': ['*']
                 }
-                });
+            });
 
-            if (uri === undefined){
+            if (uri === undefined) {
                 return;
             }
-            syntaxDB.createFiles(uri[0].fsPath);
+            await syntaxDB.createFiles(uri[0].fsPath);
         }));
 
 
@@ -141,6 +146,14 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(
             moose_selector, new HoverProvider(mooseDoc)));
+
+    context.subscriptions.push(
+        vscode.languages.registerOnTypeFormattingEditProvider(
+            moose_selector, new OnTypeFormattingEditProvider(mooseDoc), "]", " "));
+
+    context.subscriptions.push(
+        vscode.languages.registerDocumentFormattingEditProvider(
+            moose_selector, new DocumentFormattingEditProvider(mooseDoc)));
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
@@ -256,6 +269,127 @@ class HoverProvider implements vscode.HoverProvider {
         // return new vscode.Hover("No Data Available");
 
     }
+}
+
+async function addTabEdits(mooseDoc: MooseDoc, line: string,
+    row: number, edits: vscode.TextEdit[], tabLength = 4) {
+    
+    // do nothing if line blank
+    if (/^\s*$/.test(line) || /^\s*#.*$/.test(line)) {
+        return;
+    }
+
+    let column: number
+    if (/^\s*\[\]/.test(line) || /^\s*\[\.\.\/\]/.test(line)) {
+        column = 0;
+    } else {
+        column = line.length;
+    }
+
+    let { configPath, explicitType } = await mooseDoc.getCurrentConfigPath(
+        { row: row, column: column });
+
+    let numSpaces = (configPath.length - 1) * tabLength;
+    if (explicitType !== null) {
+        numSpaces += tabLength;
+    } else if (/^\s*[^\s]+\s*=.*/.test(line)) { // /^\s*\[[^\s]*\].*/
+        numSpaces += tabLength;
+    }
+    if (/^\s*\[\.\.\/\]/.test(line)) {
+        numSpaces -= tabLength;
+    }
+    const firstChar = line.search(/[^\s]/);
+    if (firstChar > -1 && firstChar !== numSpaces) {
+
+        let edit = new vscode.TextEdit(
+            new vscode.Range(
+                new vscode.Position(row, 0),
+                new vscode.Position(row, firstChar)
+            ),
+            " ".repeat(numSpaces)
+        );
+        edits.push(edit);
+    }
+}
+
+class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEditProvider {
+
+    private mooseDoc: MooseDoc;
+    constructor(mooseDoc: MooseDoc) {
+        this.mooseDoc = mooseDoc;
+    }
+
+    public async provideOnTypeFormattingEdits(document: vscode.TextDocument, position: vscode.Position,
+        ch: string, options: vscode.FormattingOptions, token: vscode.CancellationToken):
+        Promise<vscode.TextEdit[]> {
+
+        let edits: vscode.TextEdit[] = [];
+
+        this.mooseDoc.setDoc(new VSDoc(document));
+        let { line: row } = position;
+        let line = this.mooseDoc.getDoc().getTextForRow(row);
+        await addTabEdits(this.mooseDoc, line, row, edits,
+            vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+
+        return edits;
+
+    }
+}
+
+class DocumentFormattingEditProvider implements vscode.DocumentFormattingEditProvider {
+
+    private mooseDoc: MooseDoc;
+    constructor(mooseDoc: MooseDoc) {
+        this.mooseDoc = mooseDoc;
+    }
+
+    public async provideDocumentFormattingEdits(document: vscode.TextDocument):
+        Promise<vscode.TextEdit[]> {
+
+        let edits: vscode.TextEdit[] = [];
+        let edit: vscode.TextEdit;
+
+        this.mooseDoc.setDoc(new VSDoc(document));
+        const tabSpaces = vscode.workspace.getConfiguration('moose.tab').get('spaces', 4)
+        let lineCount = this.mooseDoc.getDoc().getLineCount();
+        let row = 0;
+        let emptyLines: number[] = [];
+
+        while (true) {
+
+            if (row >= lineCount) {
+                break;
+            }
+            let line = this.mooseDoc.getDoc().getTextForRow(row);
+
+            // correct tab spacing
+            try {
+                await addTabEdits(this.mooseDoc, line, row, edits, tabSpaces);
+            } catch (err) { console.log(err); }
+
+            // remove multiple blank rows
+            if (/^\s*$/.test(line)) {
+                emptyLines.push(row);
+            } else if (emptyLines.length > 1) {
+                edit = new vscode.TextEdit(
+                    new vscode.Range(
+                        new vscode.Position(emptyLines[0], 0),
+                        new vscode.Position(emptyLines[0]+emptyLines.length-1, line.length),
+                    ), "");
+                edits.push(edit);
+                emptyLines = [];
+            } else {
+                emptyLines = [];
+            }
+
+            row = row + 1;
+
+        }
+
+        return edits;
+
+    }
+
 }
 
 class CompletionItemProvider implements vscode.CompletionItemProvider {

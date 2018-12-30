@@ -272,7 +272,7 @@ export class MooseDoc {
      * 
      * @param pos position of cursor
      */
-    private async getCurrentConfigPath(pos: Position) {
+    public async getCurrentConfigPath(pos: Position) {
 
         let configPath: string[] = [];
         let types: { config: string[], name: string }[] = [];

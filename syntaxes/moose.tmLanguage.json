@@ -67,7 +67,7 @@
 			"match": "\\b(true|false)\\b"
 		},
 		{
-			"match": "([^\\S]type\\s*=\\s*)(.*)",
+			"match": "(^\\s*  type\\s*=\\s*)(.*)",
 			"captures": {
 				"2": {"name": "support.class.moose"}
 			}

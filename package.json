@@ -50,6 +50,11 @@
           "type": "boolean",
           "description": "whether to log debug and warning messages to the console",
           "default": false
+        },
+        "moose.tab.spaces": {
+          "type": "number",
+          "description": "the number of spaces per indentation",
+          "default": 4
         }
       }
     },
