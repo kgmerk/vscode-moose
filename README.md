@@ -5,19 +5,28 @@
 
 This extension provides language support and IntelliSense for input files of MOOSE (Multiphysics Object Oriented Simulation Environment) applications.
 
-![Example Workspace](images/example_workspace.png)
-
-Github Repo: https://github.com/chrisjsewell/vscode-moose
+<aside class="notice">
+Note: Major API change occurred in v0.7.0
+</aside>
 
 ## Features
 
 - Syntax Highlighting
-- Input Block Folding
-- Input Blocks Outline View
-- Hover/Peek/GoTo Definitions of MOOSE Objects
-- Autocomplete block names and MOOSE Objects
-- Find/Peek All References to Variables
-- Main/Sub-Block snippets
+- Autocompletion
+- Code-Folding
+- Outline Tree
+- Hover Definitions
+- Format Document
+- Identify Syntax Errors
+- Peek/GoTo Source Files
+
+### Auto Completion
+
+![Auto-completion](images/auto-complete.gif)
+
+### Introspection
+
+![Introspection](images/introspection.gif)
 
 ### IntelliSense
 
@@ -82,37 +91,9 @@ This extension is hosted at Visual Studio Marketplace
 
 ## Release Notes
 
-### 0.0.1
+### 0.7.0
 
-Initial release, including syntax colouring, code folding and outline view
-
-### 0.0.2
-
-Fixed bug for Sub-Block names containing _
-
-### 0.1.0
-
-Added Autocomplete block names, Find/Peek All References to Variables, and Main/Sub-Block snippets
-
-### 0.2.0
-
-Added syntax colouring of moose objects and 'Go To'/'Peek' Definitions
-
-### 0.3.0
-
-Added MOOSE object autocompletion
-
-### 0.4.0
-
-Added MOOSE object hovering
-
-### 0.5.0
-
-Added MOOSE descriptions in autocomplete and auto-update of MOOSE objects
-
-### 0.6.0
-
-Renamed settings keys (and added ignore workspace option)
+Major API change (using syntax.yaml)
 
 ## VS Code Extension Development
 

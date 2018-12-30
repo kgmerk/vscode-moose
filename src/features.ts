@@ -193,6 +193,7 @@ export class CompletionItemProvider implements vscode.CompletionItemProvider {
             else {
                 completion.kind = selectCompleteKind(mcomp.kind);
                 completion.insertText = mcomp.insertText.value;
+                
             }
             completions.push(completion);
         }
