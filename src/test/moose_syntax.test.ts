@@ -19,8 +19,8 @@ var expect = chai.expect;
 import * as moosedb from '../moose_syntax';
 // import {appData, syntaxNode} from '../moose_objects';
 
-export function getPath(relpath: string) {
-    return ppath.resolve(__dirname, relpath);
+export function getPath(relPath: string) {
+    return ppath.resolve(__dirname, relPath);
 }
 
 // Defines a Mocha test suite to group tests of similar kind together
@@ -40,36 +40,29 @@ suite("MooseSyntaxDB Tests", function () {
     setup(function () {
         // console.log("setup test")
         db = new moosedb.MooseSyntaxDB();
+        db.setLogHandles([]);
         db.setErrorHandles([console.warn]);
         yamlPath = getPath('../../src/test/syntax.yaml');
         jsonPath = getPath('../../src/test/syntax.json');
     });
-    teardown(function () {
-        // console.log("teardown test")
-    });
+    // teardown(function () {
+    //     console.log("teardown tests")
+    // });
 
     test("Rebuild (no yaml set)", function () {
+        db.setErrorHandles([(err: Error) => {throw err;}]);
         return assert.throws(() => db.rebuildAppData(), Error);
     });
 
     test("Rebuild (non-existent yaml)", function () {
-        assert.throws(() => db.setPaths('non-existent'), Error);
-
-        // old way to do it without chaiAsPromised
-        // if (db.appdata.promise !== undefined) {
-        //     return db.appdata.promise
-        //         .then(
-        //             () => Promise.reject(new Error('Expected method to reject.')),
-        //             err => assert.instanceOf(err, Error)
-        //         );
-        // }
+        db.setErrorHandles([(err: Error) => {throw err;}]);
+        return assert.throws(() => db.setPaths('non-existent'), Error);
     });
 
     test("Rebuild (bad yaml)", function () {
+        db.setErrorHandles([]);
         db.setPaths(getPath('../../src/test/bad.yaml'));
-        // db.rebuildAppData();
         return expect(db.retrieveSyntaxNodes()).to.eventually.be.rejectedWith(Error);
-        // TODO this logs a; rejected promise not handled within 1 second, is that ok?
     });
 
     test("Rebuild (success)", function () {
@@ -93,7 +86,8 @@ suite("MooseSyntaxDB Tests", function () {
         // });
         return expect(db.matchSyntaxNode(['Kernels', 'AllenCahn'])
         ).to.eventually.have.property('node').which.has.keys(
-            ['name', 'description', 'parameters', 'subblocks', 'file']);
+            ['name', 'description', 'parameters', 'subblocks', 'file']
+            ).with.property('description').eql("Allen-Cahn Kernel that uses a DerivativeMaterial Free Energy");
     });
 
     test("fetch Parameter List (failure)", function () {
@@ -162,6 +156,8 @@ suite("MooseSyntaxDB Tests", function () {
                 "Modules/PhaseField/Nonconserved",
                 "Modules/PhaseField/Nonconserved/*"]);
     });
+
+
 
 });
 

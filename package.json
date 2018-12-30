@@ -36,6 +36,16 @@
       "type": "object",
       "title": "Moose configuration",
       "properties": {
+        "moose.syntax.yaml": {
+          "type": "string",
+          "description": "specifies path of syntax.yaml file",
+          "default": "/Users/cjs14/GitHub/vscode-moose/src/test/syntax.yaml"
+        },
+        "moose.syntax.json": {
+          "type": "string",
+          "description": "specifies path of syntax.json file",
+          "default": "/Users/cjs14/GitHub/vscode-moose/src/test/syntax.json"
+        },
         "moose.exclude.workspaces": {
           "type": "array",
           "items": {

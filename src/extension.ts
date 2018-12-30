@@ -2,9 +2,32 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import * as pathparse from 'path';
+import * as ppath from 'path';
 
-import { MooseFileStruct } from './moose_filestruct';
+import { MooseSyntaxDB } from './moose_syntax';
+import { MooseDoc, Document, OutlineItem } from './moose_doc';
+
+class VSDoc implements Document {
+    private vsdoc: vscode.TextDocument;
+    constructor(vsdoc: vscode.TextDocument) {
+        this.vsdoc = vsdoc
+    }
+    getPath() {
+        return this.vsdoc.uri.fsPath;
+    }
+    getLineCount() {
+        return this.vsdoc.lineCount;
+    }
+    getTextInRange(start: [number, number], end: [number, number]) {
+        let pos1 = new vscode.Position(start[0], start[1]);
+        let pos2 = new vscode.Position(end[0], end[1]);
+        return this.vsdoc.getText(new vscode.Range(pos1, pos2));
+    }
+    getTextForRow(row: number) {
+        // TODO this method seems quite slow
+        return this.vsdoc.lineAt(row).text;
+    }
+}
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -14,53 +37,92 @@ export function activate(context: vscode.ExtensionContext) {
 
     var moose_selector = { scheme: 'file', language: "moose" };
 
-    // Initialise MOOSE objects DB
-    var moose_objects = new MooseFileStruct();
+    // Initialise MOOSE syntax DB
+    var syntaxDB = new MooseSyntaxDB();
+    syntaxDB.setLogHandles([console.log]);
+    syntaxDB.setErrorHandles(
+        [error => vscode.window.showWarningMessage("Moose for VBCode: " + error.message)]);
+    function updateDBPaths() {
+        let yamlPath = vscode.workspace.getConfiguration('moose.syntax').get('yaml', null);
+        let jsonPath = vscode.workspace.getConfiguration('moose.syntax').get('json', null);
+        // TODO resolve relative paths?
+        syntaxDB.setPaths(yamlPath, jsonPath);
+    }
+    updateDBPaths();
 
-    // allow manual reset of MOOSE objects DB
+    // allow manual reset of MOOSE syntax DB
     context.subscriptions.push(
         vscode.commands.registerCommand('moose.ResetMooseObjects', () => {
-            moose_objects.resetMooseObjects();
-    }));
+            syntaxDB.rebuildAppData();
+        }));
 
-    // Keep MOOSE objects DB up-to-date
+    // Keep MOOSE syntax DB up-to-date
     let config_change = vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('moose')) {moose_objects.resetMooseObjects();}
+        if (event.affectsConfiguration('moose.syntax')) { updateDBPaths(); }
     });
     context.subscriptions.push(config_change);
-    let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {moose_objects.resetMooseObjects();});
-    context.subscriptions.push(workspace_change);
+
+    // let workspace_change = vscode.workspace.onDidChangeWorkspaceFolders(event => {updateDBPaths();});
+    // context.subscriptions.push(workspace_change);
+
+    function checkPath(filePath: vscode.Uri) {
+
+        let { yamlPath, jsonPath } = syntaxDB.getPaths();
+
+        if (yamlPath !== null) {
+            if (ppath.resolve(yamlPath) === ppath.resolve(filePath.fsPath)) {
+                syntaxDB.rebuildAppData();
+            }
+        } else if (jsonPath !== null) {
+            if (ppath.resolve(jsonPath) === ppath.resolve(filePath.fsPath)) {
+                syntaxDB.rebuildAppData();
+            }
+        }
+    }
+
     let fileSystemWatcher = vscode.workspace.createFileSystemWatcher('**', false, false, false);
     context.subscriptions.push(fileSystemWatcher.onDidCreate((filePath) => {
-        moose_objects.addMooseObject(filePath);
+        checkPath(filePath);
     }));
     context.subscriptions.push(fileSystemWatcher.onDidChange((filePath) => {
-        moose_objects.removeMooseObject(filePath);
-        moose_objects.addMooseObject(filePath);
+        checkPath(filePath);
     }));
     context.subscriptions.push(fileSystemWatcher.onDidDelete((filePath) => {
-        moose_objects.removeMooseObject(filePath);
+        checkPath(filePath);
     }));
 
-    context.subscriptions.push(
-        vscode.languages.registerCompletionItemProvider(
-            moose_selector, new CompletionItemProvider(moose_objects), "[", "="));
+    // create the moose document instance
+    let mooseDoc = new MooseDoc(syntaxDB);
 
-    context.subscriptions.push(
-        vscode.languages.registerDocumentSymbolProvider(
-            moose_selector, new DocumentSymbolProvider()));
-
-    context.subscriptions.push(
-        vscode.languages.registerReferenceProvider(
-            moose_selector, new ReferenceProvider()));
+    // register all functionality providers
+    // See https://code.visualstudio.com/api/language-extensions/programmatic-language-features
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider(
-            moose_selector, new DefinitionProvider(moose_objects)));
+            moose_selector, new DefinitionProvider(mooseDoc)));
 
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(
-            moose_selector, new HoverProvider(moose_objects)));
+            moose_selector, new HoverProvider(mooseDoc)));
+
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            moose_selector, new CompletionItemProvider(mooseDoc), "[", "="));
+
+    context.subscriptions.push(
+        vscode.languages.registerDocumentSymbolProvider(
+            moose_selector, new DocumentSymbolProvider(mooseDoc)));
+
+    let linter = new CodeActionsProvider(mooseDoc, context.subscriptions);
+    vscode.languages.registerCodeActionsProvider('moose', linter);
+
+    // context.subscriptions.push(
+    //     vscode.languages.registerCodeActionsProvider(
+    //         moose_selector, new CodeActionsProvider(mooseDoc)));
+
+    // context.subscriptions.push(
+    //     vscode.languages.registerReferenceProvider(
+    //         moose_selector, new ReferenceProvider(mooseDoc)));
 
 }
 
@@ -68,405 +130,398 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
 }
 
+function selectSymbolKind(kind: string, level: number) {
+    if (kind === "block") {
+        if (level === 1) {
+            return vscode.SymbolKind.Field;
+        } else {
+            return vscode.SymbolKind.Module;
+        }
+    } else if (kind === "parameter") {
+        return vscode.SymbolKind.Variable;
+    } else {
+        return vscode.SymbolKind.Null;
+    }
+}
+
+function selectCompleteKind(kind: string) {
+    if (kind === "block") {
+        return vscode.CompletionItemKind.Field;
+    } else if (kind === "parameter") {
+        return vscode.CompletionItemKind.Variable;
+    } else if (kind === "value") {
+        return vscode.CompletionItemKind.Value;
+    } else if (kind === "type") {
+        return vscode.CompletionItemKind.TypeParameter;
+    } else if (kind === "closing") {
+        return vscode.CompletionItemKind.Text;
+    } else {
+        return vscode.CompletionItemKind.Text;
+    }
+}
+
 class DefinitionProvider implements vscode.DefinitionProvider {
 
-    private moose_objects: MooseFileStruct;
-    constructor(moose_objects: MooseFileStruct) {
-        this.moose_objects = moose_objects;
+    private mooseDoc: MooseDoc;
+    constructor(mooseDoc: MooseDoc) {
+        this.mooseDoc = mooseDoc;
     }
-    
-    public provideDefinition(
-        document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
-        Thenable<vscode.Location> {
-        return this.doFindDefinition(document, position, token);
-    }
-    
-    private doFindDefinition(
+
+    public async provideDefinition(
         document: vscode.TextDocument, position: vscode.Position,
-        token: vscode.CancellationToken): Thenable<vscode.Location> {
-        return new Promise<vscode.Location>((resolve, reject) => {
-            
-            let wordRange = document.getWordRangeAtPosition(position);
+        token: vscode.CancellationToken) {
 
-            // ignore if empty
-            if (!wordRange) {
-                //TODO how to show error message at cursor position?
-                vscode.window.showWarningMessage("empty string not definable");
-                reject("empty string not definable");
-                return;
+        this.mooseDoc.setDoc(new VSDoc(document));
+        let pos = { row: position.line, column: position.character };
+
+        let match = await this.mooseDoc.findCurrentNode(pos);
+
+        if (match !== null && "file" in match.node) {
+            if (match.node.file !== undefined) {
+                return new vscode.Location(vscode.Uri.file(match.node.file), position);
             }
+        }
 
-            let word_text = document.getText(wordRange);
-            let obj_dict = this.moose_objects.getMooseObjectsDict();
+        throw Error('no definition available');
 
-            if (word_text in obj_dict) {
-                var location = new vscode.Location(
-                    obj_dict[word_text],
-                    new vscode.Position(0, 0));
-                resolve(location);
-            } else {
-                reject("could not find declaration");
-            }
-
-        });
     }
 }
 
 class HoverProvider implements vscode.HoverProvider {
 
-    private moose_objects: MooseFileStruct;
-    constructor(moose_objects: MooseFileStruct) {
-        this.moose_objects = moose_objects;
+    private mooseDoc: MooseDoc;
+    constructor(mooseDoc: MooseDoc) {
+        this.mooseDoc = mooseDoc;
     }
 
-    public provideHover(
+    public async provideHover(
         document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):
-        Thenable<vscode.Hover> {
-        return this.doFindDefinition(document, position, token);
-    }
+        Promise<vscode.Hover> {
 
-    private doFindDefinition(
-        document: vscode.TextDocument, position: vscode.Position,
-        token: vscode.CancellationToken): Thenable<vscode.Hover> {
-        return new Promise<vscode.Hover>((resolve, reject) => {
+        this.mooseDoc.setDoc(new VSDoc(document));
+        let { line, character } = position;
+        let pos = { row: line, column: character };
+        let match = await this.mooseDoc.findCurrentNode(pos);
+        if (match !== null) {
+            let { node, path, range } = match;
 
-            if (!document.lineAt(position.line).text.trim().match("type*=*")) {
-                reject('no definition available');
-                return;
+            let mkdown = new vscode.MarkdownString();
+            let descript = "**" + path.join("/") + "**\n\n" + node.description
+            if ("options" in node) {
+                if (node.options) {
+                    descript += "\n**Options**: " + node.options.split(" ").join(", ");
+                }
             }
+            mkdown.appendMarkdown(descript);
+            let hover = new vscode.Hover(mkdown,
+                new vscode.Range(new vscode.Position(line, range[0]),
+                    new vscode.Position(line, range[1])));
+            return hover;
+        }
 
-            let wordRange = document.getWordRangeAtPosition(position);
+        throw Error('no data available');
+        // return new vscode.Hover("No Data Available");
 
-            // ignore if empty
-            if (!wordRange) {
-                reject("empty string not definable");
-                return;
-            }
-            let word_text = document.getText(wordRange);
-            if (word_text === "type" || word_text === "=" || word_text === "") {
-                reject('no definition available');
-                return;
-            }
-
-            let moose_dict = this.moose_objects.getMooseObjectsDict();
-
-            if (word_text in moose_dict) {
-                const uri = moose_dict[word_text];
-
-                let thenable = this.moose_objects.createDescription(uri);
-
-                thenable.then(
-                    descript => {
-                        if (descript === null){
-                            // reject('no definition description available');
-                            const results = new vscode.Hover("No Class Description Available");
-                            resolve(results);
-                        } else {
-                            let mkdown = new vscode.MarkdownString(descript); // "**"+word_text+"**:\n"+descript
-                            const results = new vscode.Hover(mkdown);
-                            resolve(results);
-                        }        
-                    }
-                );                
-
-            } else {
-                // reject('no definition description available');
-                const results = new vscode.Hover("No Class Description Available");
-                resolve(results);
-            }
-
-        });
-    }
-}
-
-// TODO implement change all occurences reference names; difficult because would have to account for when they are used in functions, etc
-
-class ReferenceProvider implements vscode.ReferenceProvider {
-    public provideReferences(
-        document: vscode.TextDocument, position: vscode.Position,
-        options: { includeDeclaration: boolean }, token: vscode.CancellationToken): Thenable<vscode.Location[]> {
-        return this.doFindReferences(document, position, options, token);
-    }
-
-    private doFindReferences(
-        document: vscode.TextDocument, position: vscode.Position,
-        options: { includeDeclaration: boolean }, token: vscode.CancellationToken): Thenable<vscode.Location[]> {
-        return new Promise<vscode.Location[]>((resolve, reject) => {
-            // get current word
-            let wordRange = document.getWordRangeAtPosition(position);
-
-            // ignore if empty
-            if (!wordRange) {
-                //TODO how to show error message at cursor position?
-                // vscode.window.showWarningMessage("empty string not referencable");
-                // console.log("empty string not referencable");
-                reject("empty string not referencable");
-
-            }
-            let word_text = document.getText(wordRange);
-
-            // ignore if is a number
-            if (!isNaN(Number(word_text))) {
-                // return resolve([]);
-                //TODO how to show error message at cursor position?
-                // vscode.window.showWarningMessage("numbers are not referencable");
-                // console.log("numbers are not referencable");
-                reject("numbers are not referencable");
-
-            }
-
-            let results: vscode.Location[] = [];
-            let in_variables = false;
-
-            for (var i = 0; i < document.lineCount; i++) {
-                var line = document.lineAt(i);
-
-                // remove comments
-                var line_text = line.text.trim().split("#")[0].trim();
-
-                // reference variable instatiation in [Variables] block e.g. [./c]
-                if (line_text === "[Variables]" || line_text === "[AuxVariables]") {
-                    in_variables = true;
-                }
-                if (line_text === "[]") {
-                    in_variables = false;
-                }
-                if (in_variables && line_text === "[./" + word_text + "]") {
-                    results.push(new vscode.Location(document.uri, line.range));
-                    continue;
-                }
-
-                // TODO account for if quoted string is continued over multiple lines
-
-                // get right side of equals
-                if (!line_text.includes("=")) {
-                    continue;
-                }
-                var larray = line_text.split("=");
-                if (larray.length < 2) {
-                    continue;
-                }
-                var equals_text = larray[1].trim();
-
-                // remove quotes
-                if (equals_text.startsWith("'") && equals_text.endsWith("'")) {
-                    equals_text = equals_text.substr(1, equals_text.length - 2);
-                }
-                if (equals_text.startsWith('"') && equals_text.endsWith('"')) {
-                    equals_text = equals_text.substr(1, equals_text.length - 2);
-                }
-
-                // test if only reference
-                if (equals_text === word_text) {
-                    results.push(new vscode.Location(document.uri, line.range));
-                } else {
-                    // test if one of many references
-                    for (let elem of equals_text.split(" ")) {
-                        if (elem.trim() === word_text) {
-                            results.push(new vscode.Location(document.uri, line.range));
-                            break;
-                        }
-                    }
-                }
-                // TODO find reference when used in a function
-
-            }
-            resolve(results);
-        });
     }
 }
 
 class CompletionItemProvider implements vscode.CompletionItemProvider {
 
-    private moose_objects: MooseFileStruct;
-    private moose_blocks: string[];
-    constructor(moose_objects: MooseFileStruct) {
-        this.moose_objects = moose_objects;
-        this.moose_blocks = [
-            "GlobalParams",
-            "Variables",
-            "AuxVariables",
-            "Mesh",
-            "BCs",
-            "ICs",
-            "Problem",
-            "Precursors",
-            "Kernels",
-            "AuxKernels",
-            "Functions",
-            "Materials",
-            "Executioner",
-            "Preconditioning",
-            "Outputs"
-        ];
-
+    private mooseDoc: MooseDoc;
+    constructor(mooseDoc: MooseDoc) {
+        this.mooseDoc = mooseDoc;
     }
 
-    public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
+    public async provideCompletionItems(document: vscode.TextDocument,
+        position: vscode.Position, token: vscode.CancellationToken) {
+        let completions: vscode.CompletionItem[] = [];
 
-        var completions = [];
+        this.mooseDoc.setDoc(new VSDoc(document));
+        let { line, character } = position;
+        let pos = { row: line, column: character };
 
-        // Block name completions after square bracket
-        var before_sbracket = false;
-        if (position.character !== 0) {
-            var char = document.getText(new vscode.Range(position.translate(0, -1), position));
-            if (char === "[") {
-                before_sbracket = true;
+        let mcomps = await this.mooseDoc.findCompletions(pos);
+
+        for (let mcomp of mcomps) {
+            let completion = new vscode.CompletionItem(mcomp.displayText);
+            completion.documentation = mcomp.description;
+
+            if (mcomp.insertText.type === "snippet") {
+                completion.kind = vscode.CompletionItemKind.Snippet;
+                let snippet = new vscode.SnippetString(mcomp.insertText.value);
+                completion.insertText = snippet;
+
+            } else {
+                completion.kind = selectCompleteKind(mcomp.kind);
+                completion.insertText = mcomp.insertText.value;
             }
-        }
-        if (before_sbracket) {
-            for (let bname of this.moose_blocks) {
-                completions.push(new vscode.CompletionItem(bname, vscode.CompletionItemKind.Field));
-            }
-            completions.push(new vscode.CompletionItem("./"));
-            completions.push(new vscode.CompletionItem("../"));
-        }
 
-        // MOOSE object name completions after 'type ='
-        if (document.lineAt(position.line).text.trim().match("type*=*")) {
-            // TODO MOOSE objects autocomplete could also be based on current block
-            let moose_list = this.moose_objects.getMooseObjectsList();
-            for (let uri of moose_list) {
-                var path = pathparse.parse(uri.fsPath);
-                let citem = new vscode.CompletionItem(" " + path.name, vscode.CompletionItemKind.Class);
-                citem.detail = uri.fsPath; // this is at the top
-                let descript = this.moose_objects.getDescription(uri);
-                if (descript !== null){
-                    citem.documentation = descript; // this is at the bottom
-                }
-                completions.push(citem);
-            }
-        }
+            completions.push(completion);
 
-        // new vscode.CompletionItem("active = ''"),  
-        // TODO if `active` present in block, dim out non-active sub-blocks or action to fold them?
+        }
 
         return completions;
     }
-
 }
 
 class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
-    public provideDocumentSymbols(document: vscode.TextDocument,
-        token: vscode.CancellationToken): Thenable<vscode.SymbolInformation[]> {
-        return new Promise((resolve, reject) => {
-            var symbols = [];
-            var head1_regex = new RegExp('\\[[_a-zA-Z0-9]+\\]');
-            var head2_regex = new RegExp('\\[\\.\\/[_a-zA-Z0-9]+\\]');
-            var in_variables = false;
-            var kind = null;
 
-            for (var i = 0; i < document.lineCount; i++) {
-                var line = document.lineAt(i);
+    private mooseDoc: MooseDoc;
 
-                // remove comments
-                var text = line.text.trim().split("#")[0].trim();
+    constructor(mooseDoc: MooseDoc) {
+        this.mooseDoc = mooseDoc;
+    }
 
-                if (head1_regex.test(text)) {
+    private createSymbol(item: OutlineItem) {
 
-                    // Check if in variables block
-                    if (text.substr(1, text.length - 2).match('Variables') || text.substr(1, text.length - 2).match('AuxVariables')) {
-                        in_variables = true;
-                    } else {
-                        in_variables = false;
-                    }
+        if (!item.end) {
+            return null;
+        }
 
-                    // Find the closing []
-                    var last_line = line;
-                    for (var j = i; j < document.lineCount; j++) {
-                        var line2 = document.lineAt(j);
-                        var text2 = line2.text.trim();
-                        if (text2 === "[]") {
-                            last_line = line2;
-                            break;
-                        }
-                    }
+        let range = new vscode.Range(
+            new vscode.Position(...item.start),
+            new vscode.Position(...item.end));
+        let selectRange = new vscode.Range(
+            new vscode.Position(...item.start),
+            new vscode.Position(...item.start));
 
-                    symbols.push({
-                        name: text.substr(1, text.length - 2),
-                        containerName: "Main Block",
-                        kind: vscode.SymbolKind.Field,
-                        location: new vscode.Location(document.uri,
-                            new vscode.Range(new vscode.Position(line.lineNumber, 1),
-                                new vscode.Position(last_line.lineNumber, last_line.text.length)))
-                    });
-                }
-                if (head2_regex.test(text)) {
+        let params = {
+            name: item.name,
+            detail: item.description,
+            kind: selectSymbolKind(item.kind, item.level),
+            range: range,
+            selectionRange: selectRange
+        };
 
-                    // Find the closing [../]
-                    var last_line2 = line;
-                    for (var k = i; k < document.lineCount; k++) {
-                        var line3 = document.lineAt(k);
-                        var text3 = line3.text.trim();
-                        if (text3 === "[../]") {
-                            last_line2 = line3;
-                            break;
-                        }
-                    }
+        let symbol = new vscode.DocumentSymbol(
+            params.name, params.detail, params.kind,
+            params.range, params.selectionRange
+        );
 
-                    if (in_variables) {
-                        kind = vscode.SymbolKind.Variable;
-                    } else {
-                        kind = vscode.SymbolKind.String;
-                    }
+        return symbol;
+    }
 
-                    symbols.push({
-                        name: text.substr(3, text.length - 4),
-                        containerName: "Sub Block",
-                        kind: kind,
-                        location: new vscode.Location(document.uri,
-                            new vscode.Range(new vscode.Position(line.lineNumber, 1),
-                                new vscode.Position(last_line2.lineNumber, last_line2.text.length)))
-                    });
-                }
+    private recurseSymbols(item: OutlineItem, symbol: vscode.DocumentSymbol) {
+
+        let children: vscode.DocumentSymbol[] = [];
+        for (let childItem of item.children) {
+            let childSymbol = this.createSymbol(childItem);
+            if (childSymbol) {
+                this.recurseSymbols(childItem, childSymbol);
+                children.push(childSymbol);
+            }
+        }
+        symbol.children = children;
+
+    }
+
+    public async provideDocumentSymbols(document: vscode.TextDocument,
+        token: vscode.CancellationToken): Promise<vscode.DocumentSymbol[]> {
+
+        let symbols: vscode.DocumentSymbol[] = [];
+        let symbol: vscode.DocumentSymbol | null;
+
+        this.mooseDoc.setDoc(new VSDoc(document));
+        let { outline } = await this.mooseDoc.assessOutline();
+
+        for (let item of outline) {
+
+            symbol = this.createSymbol(item);
+            if (symbol) {
+                this.recurseSymbols(item, symbol);
+                symbols.push(symbol);
             }
 
-            resolve(symbols);
-        });
+        }
+
+        return symbols;
+
     }
 }
 
+// adapted from https://github.com/hoovercj/vscode-extension-tutorial
+class CodeActionsProvider implements vscode.CodeActionProvider {
 
-// TODO move to DocumentSymbol API: https://code.visualstudio.com/updates/v1_25#_document-symbols
-// Like this (although this isn't working)
-// class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
-//     public provideDocumentSymbols(document: vscode.TextDocument,
-//             token: vscode.CancellationToken): Thenable<vscode.DocumentSymbol[]> {
-//         return new Promise((resolve, reject) => {
-//             var symbols = [];
-//             var head1_regex = new RegExp('\\[[a-zA-Z0-9]+\\]');
-//             var head2_regex = new RegExp('\\[\\.\\/[a-zA-Z0-9]+\\]');
+    private static commandId: string = 'moose.runCodeAction';
+    private command: vscode.Disposable;
+    private diagnosticCollection: vscode.DiagnosticCollection;
+    private mooseDoc: MooseDoc;
+
+    constructor(mooseDoc: MooseDoc, subscriptions: vscode.Disposable[]) {
+        this.mooseDoc = mooseDoc;
+
+        this.command = vscode.commands.registerCommand(CodeActionsProvider.commandId, this.runCodeAction, this);
+        subscriptions.push(this);
+        this.diagnosticCollection = vscode.languages.createDiagnosticCollection();
+
+        vscode.workspace.onDidOpenTextDocument(this.dolint, this, subscriptions);
+        vscode.workspace.onDidCloseTextDocument((textDocument) => {
+            this.diagnosticCollection.delete(textDocument.uri);
+        }, null, subscriptions);
+
+        vscode.workspace.onDidSaveTextDocument(this.dolint, this);
+
+        // lint all open moose documents
+        vscode.workspace.textDocuments.forEach(this.dolint, this);
+    }
+
+    public dispose(): void {
+        this.diagnosticCollection.clear();
+        this.diagnosticCollection.dispose();
+        this.command.dispose();
+    }
+
+    private async dolint(document: vscode.TextDocument) {
+
+        if (document.languageId !== 'moose') {
+            return;
+        }
+
+        let diagnostics: vscode.Diagnostic[] = [];
+        let diagnostic: vscode.Diagnostic;
+        let severity: vscode.DiagnosticSeverity;
+        let message: string;
+        let range: vscode.Range
+        this.mooseDoc.setDoc(new VSDoc(document));
+
+        let { errors } = await this.mooseDoc.assessOutline();
+
+        for (let error of errors) {
+
+            severity = vscode.DiagnosticSeverity.Error;
+            message = error.msg;
+            range = new vscode.Range(
+                new vscode.Position(error.row, error.columns[0]),
+                new vscode.Position(error.row, error.columns[1])
+            );
+
+            diagnostic = new vscode.Diagnostic(range, message, severity);
+            diagnostics.push(diagnostic);
+        }
+
+        this.diagnosticCollection.set(document.uri, diagnostics);
+
+    }
+
+    public provideCodeActions(
+        document: vscode.TextDocument, range: vscode.Range,
+        context: vscode.CodeActionContext, token: vscode.CancellationToken):
+        vscode.CodeAction[] {
+
+        this.mooseDoc.setDoc(new VSDoc(document));
+
+        let commands: vscode.CodeAction[] = [];
+
+        // TODO create CodeActionsProvider
+        // let a = new vscode.CodeAction("hi");
+        // commands.push(a);
+
+        return commands;
+    }
+
+    private runCodeAction(document: vscode.TextDocument, range: vscode.Range, message: string): any {
+        // TODO create runCodeAction
+        // let edit = new vscode.WorkspaceEdit();
+        // edit.replace(document.uri, range, newText);
+        // return vscode.workspace.applyEdit(edit);
+    }
+
+}
+
+// TODO make a proper "find all references function" (account for when they are used in functions, etc)
+// TODO implement change all occurences reference names
+
+// class ReferenceProvider implements vscode.ReferenceProvider {
+
+//     private mooseDoc: MooseDoc;
+//     constructor(mooseDoc: MooseDoc) {
+//         this.mooseDoc = mooseDoc;
+//     }
+
+//     public provideReferences(
+//         document: vscode.TextDocument, position: vscode.Position,
+//         options: { includeDeclaration: boolean }, token: vscode.CancellationToken): Thenable<vscode.Location[]> {
+//         return new Promise<vscode.Location[]>((resolve, reject) => {
+//             // get current word
+//             let wordRange = document.getWordRangeAtPosition(position);
+
+//             // ignore if empty
+//             if (!wordRange) {
+//                 //TODO how to show error message at cursor position?
+//                 // vscode.window.showWarningMessage("empty string not referencable");
+//                 // console.log("empty string not referencable");
+//                 reject("empty string not referencable");
+
+//             }
+//             let word_text = document.getText(wordRange);
+
+//             // ignore if is a number
+//             if (!isNaN(Number(word_text))) {
+//                 // return resolve([]);
+//                 //TODO how to show error message at cursor position?
+//                 // vscode.window.showWarningMessage("numbers are not referencable");
+//                 // console.log("numbers are not referencable");
+//                 reject("numbers are not referencable");
+
+//             }
+
+//             let results: vscode.Location[] = [];
+//             let in_variables = false;
+
 //             for (var i = 0; i < document.lineCount; i++) {
 //                 var line = document.lineAt(i);
-//                 var text = line.text.trim();
-//                 // if (line.text.startsWith("[")) {
-//                 if (head1_regex.test(text)) {
-//                     // var location = new vscode.Location(document.uri, line.range)
-//                     symbols.push({
-//                         name: text.substr(1, text.length-2),
-//                         detail: "Main Module",
-//                         kind: vscode.SymbolKind.String,
-//                         range: new vscode.Range(new vscode.Position(line.lineNumber, 1), 
-//                                                 new vscode.Position(line.lineNumber, line.text.length)),
-//                         selectionRange: new vscode.Range(new vscode.Position(line.lineNumber, 1), 
-//                                                 new vscode.Position(line.lineNumber, line.text.length)),
-//                         children: []
-//                     });
+
+//                 // remove comments
+//                 var line_text = line.text.trim().split("#")[0].trim();
+
+//                 // reference variable instatiation in [Variables] block e.g. [./c]
+//                 if (line_text === "[Variables]" || line_text === "[AuxVariables]") {
+//                     in_variables = true;
 //                 }
-//                 if (head2_regex.test(text)) {
-//                     symbols.push({
-//                         name: text.substr(3, text.length-4),
-//                         detail: "Submodule",
-//                         kind: vscode.SymbolKind.String,
-//                         range: new vscode.Range(new vscode.Position(line.lineNumber, 1), 
-//                                                 new vscode.Position(line.lineNumber, line.text.length)),
-//                         selectionRange: new vscode.Range(new vscode.Position(line.lineNumber, 1), 
-//                                                 new vscode.Position(line.lineNumber, line.text.length)),
-//                         children: []
-//                     });
+//                 if (line_text === "[]") {
+//                     in_variables = false;
 //                 }
-//            }
-//             resolve(symbols);
+//                 if (in_variables && line_text === "[./" + word_text + "]") {
+//                     results.push(new vscode.Location(document.uri, line.range));
+//                     continue;
+//                 }
+
+//                 // TODO account for if quoted string is continued over multiple lines
+
+//                 // get right side of equals
+//                 if (!line_text.includes("=")) {
+//                     continue;
+//                 }
+//                 var larray = line_text.split("=");
+//                 if (larray.length < 2) {
+//                     continue;
+//                 }
+//                 var equals_text = larray[1].trim();
+
+//                 // remove quotes
+//                 if (equals_text.startsWith("'") && equals_text.endsWith("'")) {
+//                     equals_text = equals_text.substr(1, equals_text.length - 2);
+//                 }
+//                 if (equals_text.startsWith('"') && equals_text.endsWith('"')) {
+//                     equals_text = equals_text.substr(1, equals_text.length - 2);
+//                 }
+
+//                 // test if only reference
+//                 if (equals_text === word_text) {
+//                     results.push(new vscode.Location(document.uri, line.range));
+//                 } else {
+//                     // test if one of many references
+//                     for (let elem of equals_text.split(" ")) {
+//                         if (elem.trim() === word_text) {
+//                             results.push(new vscode.Location(document.uri, line.range));
+//                             break;
+//                         }
+//                     }
+//                 }
+//                 // TODO find reference when used in a function
+
+//             }
+//             resolve(results);
 //         });
 //     }
 // }

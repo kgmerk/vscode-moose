@@ -49,23 +49,27 @@ export class MooseSyntaxDB {
     // path to the yaml syntax file, output by ./moose-app --json {--allow-test-objects}
     private json_path: string | null = null;
     private jsonNodes: Promise<JsonNode> | null = null;
+    // handles to deal with logging and errors
+    private logHandles: ((message: string) => void)[] = [];
+    private errHandles: ((error: Error) => void)[] = [];
 
-    private errHandles: ((message: string) => void)[] = [console.warn];
+    private handleLog(message: string) {
+        for (let handle of this.logHandles) {
+            handle(message);
+        }
+    }
+    /** set list of functions to handle error messages (e.g. console.log) */
+    public setLogHandles(handles: ((message: string) => void)[]) {
+        this.logHandles = handles;
+    }
 
-    // constructor() {
-    //     this.yaml_path = null;
-    // }
-
-    // private logDebug(message: string) {
-    //     console.log("Moose Objects: " + message);
-    // }
     private handleError(err: Error) {
-        for (let handle of this.errHandles){
-            handle("Moose Objects: " + err.message);
+        for (let handle of this.errHandles) {
+            handle(err);
         }
     }
     /** set list of functions to handle error messages (e.g. console.warn) */
-    public setErrorHandles(handles: ((message: string) => void)[]){
+    public setErrorHandles(handles: ((error: Error) => void)[]) {
         this.errHandles = handles;
     }
 
@@ -85,12 +89,13 @@ export class MooseSyntaxDB {
             if (!fs.existsSync(ypath)) {
                 let err = Error("the yaml path does not exist: " + ypath);
                 this.handleError(err);
-                throw err;
-            }
-            let new_yaml = ppath.normalize(ypath);
-            if (this.yaml_path === null || this.yaml_path !== new_yaml) {
-                this.yaml_path = ypath;
-                rebuild_yaml = true;
+                // throw err;
+            } else {
+                let new_yaml = ppath.resolve(ypath);
+                if (this.yaml_path === null || this.yaml_path !== new_yaml) {
+                    this.yaml_path = ypath;
+                    rebuild_yaml = true;
+                }
             }
         }
 
@@ -99,12 +104,13 @@ export class MooseSyntaxDB {
             if (!fs.existsSync(jpath)) {
                 let err = Error("the json path does not exist: " + jpath);
                 this.handleError(err);
-                throw err;
-            }
-            let new_json = ppath.normalize(jpath);
-            if (this.json_path === null || this.json_path !== new_json) {
-                this.json_path = jpath;
-                rebuild_json = true;
+                // throw err;
+            } else {
+                let new_json = ppath.resolve(jpath);
+                if (this.json_path === null || this.json_path !== new_json) {
+                    this.json_path = jpath;
+                    rebuild_json = true;
+                }
             }
         }
 
@@ -125,14 +131,27 @@ export class MooseSyntaxDB {
         let { yamlPath, jsonPath } = this.getPaths();
 
         if (yamlPath === null) {
-            let err = Error("no yaml data path set")
+            let err = Error("no yaml data path set");
             this.handleError(err);
-            throw err;
+            // throw err;
+            return;
         }
-        if (yaml) { this.syntaxNodes = this.loadYamlData(yamlPath); }
+        if (yaml) {
+            this.syntaxNodes = this.loadYamlData(yamlPath);
+            if (this.syntaxNodes !== null) {
+                this.syntaxNodes.then(value => {
+                    this.handleLog("Loaded Syntax Nodes");
+                }).catch(reason => this.handleError(Error(reason)));
+            }
+        }
 
         if (json && jsonPath !== null) {
             this.jsonNodes = this.loadJsonData(jsonPath);
+            if (this.jsonNodes !== null) {
+                this.jsonNodes.then(value => {
+                    this.handleLog("Loaded JSON Nodes");
+                }).catch(reason => this.handleError(Error(reason)));
+            }
         }
 
     }
@@ -143,8 +162,10 @@ export class MooseSyntaxDB {
         if (this.syntaxNodes === null) {
             let err = Error("syntax data not set");
             this.handleError(err);
-            throw err;
+            // throw err;
+            return new Promise<SyntaxNode[]>(resolve => { return [] as SyntaxNode[]; });
         }
+        // this.syntaxNodes.catch(reason => this.handleError(Error(reason)));
         return this.syntaxNodes;
     }
 
@@ -174,12 +195,13 @@ export class MooseSyntaxDB {
 
         // read the file asynchronously
         const readFile = util.promisify(fs.readFile);
-        try {
-            var yaml_content = await readFile(yaml_path, 'utf8');
-        } catch(err) {
-            this.handleError(err);
-            throw err;
-        }
+        // try {
+        //     var yaml_content = await readFile(yaml_path, 'utf8');
+        // } catch (err) {
+        //     // this.handleError(err);
+        //     throw err;
+        // }
+        var yaml_content = await readFile(yaml_path, 'utf8');
 
 
         // markers to remove at the beginning and end of the file
@@ -199,8 +221,8 @@ export class MooseSyntaxDB {
         const readFile = util.promisify(fs.readFile);
         try {
             var json_content = await readFile(json_path, 'utf8');
-        } catch(err) {
-            this.handleError(err);
+        } catch (err) {
+            //this.handleError(err);
             throw err;
         }
 
@@ -293,73 +315,103 @@ export class MooseSyntaxDB {
         let match = matchList[0];
 
         // append json data
-        if (this.jsonNodes !== null && addJsonData && (util.isUndefined(match.node.file))) {
-
-            let node = null;
-            if (configPath.length === 2) {
-                let nodes = await this.jsonNodes;
-                node = this.getKeyPath(nodes, ["blocks", configPath[0], "star",
-                    "subblock_types", configPath[1]]);
-            }
-            if (configPath.length === 3) {
-                if (configPath[1] === "<type>") {
-                    let nodes = await this.jsonNodes;
-                    node = this.getKeyPath(nodes, ["blocks", configPath[0], "star",
-                        "types", configPath[2]]);
-                }
-            }
-
-            if (node !== null) {
-                if ("syntax_path" in node) {
-                    if (node["syntax_path"] === configPath.join("/")) {
-                        if ("description" in node) {
-                            match.node.description = node["description"];
-                        }
-                        if ("register_file" in node) {
-                            match.node.file = node["register_file"];
-                        }
-                    }
-
-                }
-            }
+        if (addJsonData && (util.isUndefined(match.node.file))) {
+            await this.addJSONData(match.node, configPath);
         }
 
         return match;
 
     }
 
+    // lazily add json data to a node (i.e. only add it when needed)
+    private async addJSONData(node: SyntaxNode, configPath: string[]) {
+
+        let success = false
+
+        if (this.jsonNodes === null) {
+            return success;
+        }
+
+        let jsonNode = null;
+        if (configPath.length === 2) {
+            jsonNode = this.getKeyPath(await this.jsonNodes, ["blocks", configPath[0], "star",
+                "subblock_types", configPath[1]]);
+        }
+        if (configPath.length === 3) {
+            if (configPath[1] === "<type>") {
+                jsonNode = this.getKeyPath(await this.jsonNodes, ["blocks", configPath[0],
+                    "types", configPath[2]]);
+            }
+        }
+        if (jsonNode !== null) {
+            if ("syntax_path" in jsonNode) {
+                if (jsonNode["syntax_path"] === configPath.join("/")) {
+                    success = true;
+                    if ("description" in jsonNode) {
+                        node.description = jsonNode["description"];
+                    }
+                    if ("register_file" in jsonNode) {
+                        node.file = jsonNode["register_file"];
+                    }
+                }
+
+            }
+        }
+
+        return success;
+    }
+
+    // TODO this should be a generator method (yield), 
+    // but not sure can be implemented yet (see https://stackoverflow.com/questions/44883643/how-to-declare-async-generator-function)
+    public async iterateSubBlocks (node: SyntaxNode, configPath: string[], addJsonData = true) {
+
+        let subNodes = [];
+
+        for (let subNode of Array.from(node.subblocks || [])) {
+            // append json data
+            if (addJsonData && (util.isUndefined(subNode.file))) {
+                // TODO do we need to deal with typed paths?
+                await this.addJSONData(subNode, subNode.name.substr(1).split("/"));
+            }
+            
+            subNodes.push(subNode);
+        }
+
+        return subNodes;
+    }
+
     // get the leaf node of a nested dictionary path
     private getKeyPath(nodes: any, keyPath: string[]) {
-    for (let key of keyPath) {
-        if (!util.isObject(nodes)) {
-            return null;
+        for (let key of keyPath) {
+            if (!util.isObject(nodes)) {
+                return null;
+            }
+            if (key in nodes) {
+                nodes = nodes[key];
+            } else {
+                return null;
+            }
         }
-        if (key in nodes) {
-            nodes = nodes[key];
-        } else {
-            return null;
-        }
+        return nodes;
     }
-    return nodes;
-}
 
     /** add the `/Type` (or `/<type>/Type` for top level blocks) pseudo path
     * if we are inside a typed block
     */
-    private getTypedPath(configPath: string[], type: null | string, fuzzyOnLast: boolean) {
-    let typedConfigPath = configPath.slice();
+    public getTypedPath(configPath: string[], type: null | string, fuzzyOnLast: boolean) {
+        let typedConfigPath = configPath.slice();
 
-    if (type !== null && type !== '') {
+        if (type !== null && type !== '') {
 
-        if (fuzzyOnLast) {
-            typedConfigPath[configPath.length - 1] = type;
-        } else {
-            typedConfigPath.push(...Array.from(['<type>', type] || []));
+            if (fuzzyOnLast) {
+                typedConfigPath[configPath.length - 1] = type;
+            } else {
+                typedConfigPath.push(...Array.from(['<type>', type] || []));
+            }
         }
-    }
 
-    return typedConfigPath;
-}
+        return typedConfigPath;
+    }
 
     /** fetch a list of valid parameters for a syntax path
      * 
@@ -368,50 +420,51 @@ export class MooseSyntaxDB {
      */
     public async fetchParameterList(configPath: string[], explicitType: null | string = null) {
 
-    // parameters cannot exist outside of top level blocks
-    if (configPath.length === 0) {
-        return [] as ParamNode[];
-    }
+        // parameters cannot exist outside of top level blocks
+        if (configPath.length === 0) {
+            return [] as ParamNode[];
+        }
 
-    let match = await this.matchSyntaxNode(configPath);
+        let match = await this.matchSyntaxNode(configPath);
 
-    // bail out if we are in an invalid path
-    if (match === null) {
-        return [] as ParamNode[];
-    }
+        // bail out if we are in an invalid path
+        if (match === null) {
+            return [] as ParamNode[];
+        }
 
-    let { node, fuzzyOnLast } = match;
-    let searchNodes: SyntaxNode[] = [node];
+        let { node, fuzzyOnLast } = match;
+        let searchNodes: SyntaxNode[] = [node];
 
-    // add typed node if either explicitly set in input or if a default is known
-    if (explicitType === null) {
-        for (let param of Array.from(node.parameters || [])) {
-            if (param.name === 'type') {
-                explicitType = param.default;
+        // add typed node if either explicitly set in input or if a default is known
+        if (explicitType === null) {
+            for (let param of Array.from(node.parameters || [])) {
+                if (param.name === 'type') {
+                    explicitType = param.default;
+                    break;
+                }
             }
         }
-    }
 
-    if (explicitType !== null) {
-        let typedPath = this.getTypedPath(configPath, explicitType, fuzzyOnLast);
-        let result = await this.matchSyntaxNode(typedPath);
-        if (result === null) {
-            // return [] as paramNode[]; // TODO this was in original code but doesn't work?
-        } else {
-            searchNodes.unshift(result.node);
+        if (explicitType !== null) {
+            let typedPath = this.getTypedPath(configPath, explicitType, fuzzyOnLast);
+            let result = await this.matchSyntaxNode(typedPath);
+            if (result === null) {
+                // return [] as paramNode[]; // TODO this was in original code but doesn't work?
+            } else {
+                searchNodes.unshift(result.node);
+            }
         }
-    }
 
-    let paramList: ParamNode[] = [];
-    for (node of Array.from(searchNodes)) {
-        if (node !== null) {
-            paramList.push(...Array.from(node.parameters || [] as ParamNode[]));
+        let paramList: ParamNode[] = [];
+        for (node of Array.from(searchNodes)) {
+            if (node !== null) {
+                paramList.push(...Array.from(node.parameters || [] as ParamNode[]));
+            }
         }
+
+        return paramList;
+
     }
-
-    return paramList;
-
-}
 
     /**
      * 
@@ -421,52 +474,50 @@ export class MooseSyntaxDB {
      */
     private recurseSubBlocks(node: SyntaxNode, basePath: string[], matchList: string[]) {
 
-    let yamlPath = node.name.substr(1).split('/');
+        let yamlPath = node.name.substr(1).split('/');
 
-    // return if not matching base path 
-    let length = basePath.length <= yamlPath.length ? basePath.length : yamlPath.length;
-    let match = true;
-    for (let index = 0; index < length; index++) {
-        if (yamlPath[index] !== '*' && yamlPath[index] !== basePath[index]) {
-            match = false;
-            break;
+        // return if not matching base path 
+        let length = basePath.length <= yamlPath.length ? basePath.length : yamlPath.length;
+        let match = true;
+        for (let index = 0; index < length; index++) {
+            if (yamlPath[index] !== '*' && yamlPath[index] !== basePath[index]) {
+                match = false;
+                break;
+            }
         }
-    }
-    if (!match) { return; }
+        if (!match) { return; }
 
-    // if (yamlPath.slice(0, length).join('/') !== basePath.slice(0, length).join('/')) {
-    //     return;
-    // }
+        // if (yamlPath.slice(0, length).join('/') !== basePath.slice(0, length).join('/')) {
+        //     return;
+        // }
 
-    if ((node.subblocks !== null && yamlPath[yamlPath.length - 1] !== '<type>') || (yamlPath[yamlPath.length - 1] === '*')) {
-        let name = node.name.substr(1);
-        if (basePath.length < yamlPath.length && matchList.findIndex(value => value === name) === -1) {
-            matchList.push(node.name.substr(1));
+        if ((node.subblocks !== null && yamlPath[yamlPath.length - 1] !== '<type>') || (yamlPath[yamlPath.length - 1] === '*')) {
+            let name = node.name.substr(1);
+            if (basePath.length < yamlPath.length && matchList.findIndex(value => value === name) === -1) {
+                matchList.push(node.name.substr(1));
+            }
         }
-    }
-    if (node.subblocks !== null && yamlPath[yamlPath.length - 1] !== '<type>') {
-        node.subblocks.map(subNode => this.recurseSubBlocks(subNode, basePath, matchList));
-    }
+        if (node.subblocks !== null && yamlPath[yamlPath.length - 1] !== '<type>') {
+            node.subblocks.map(subNode => this.recurseSubBlocks(subNode, basePath, matchList));
+        }
 
-}
+    }
 
     /** get a list of possible sub block paths for a base path
      * 
      * @param basePath the required base path
      */
     public async getSubBlocks(basePath: string[] = []) {
-    // TODO strictly should use `./moose-app --syntax` output
+        // TODO strictly should use `./moose-app --syntax` output
 
-    let data = await this.retrieveSyntaxNodes();
-    let matchList: string[] = [];
+        let data = await this.retrieveSyntaxNodes();
+        let matchList: string[] = [];
 
-    for (let node of data) {
-        this.recurseSubBlocks(node, basePath, matchList);
+        for (let node of data) {
+            this.recurseSubBlocks(node, basePath, matchList);
+        }
+
+        return matchList;
     }
-
-    return matchList;
-}
-
-
 
 }

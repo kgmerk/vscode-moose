@@ -28,7 +28,7 @@ export interface Document {
     /**
      * get full text of document
      */
-    getText(): string;
+    // getText(): string;
     /**
      * get text within a range
      * 
@@ -46,17 +46,16 @@ export interface Document {
 
 export interface Completion {
     kind: "block" | "parameter" | "type" | "value" | "closing";
-    required?: boolean;
-    displayText?: string;
-    text?: string;
-    description?: string;
-    snippet?: string;
+    displayText: string;
+    insertText: { type: "text" | "snippet", value: string };
     replacementPrefix?: string;
+    description?: string;
+    required?: boolean;
 }
 
 export interface OutlineItem {
-    start: number;
-    end: number | null;
+    start: [number, number];
+    end: [number, number] | null;
     kind: 'block' | 'parameter';
     level: number;
     name: string;
@@ -65,6 +64,7 @@ export interface OutlineItem {
 }
 export interface SyntaxError {
     row: number;
+    columns: [number, number];
     msg: string;
     insertionBefore?: string;
     insertionAfter?: string;
@@ -102,11 +102,113 @@ let blockCloseOneLevel = /\[\.\.\/\]/;
 export class MooseDoc {
 
     private syntaxdb: moosedb.MooseSyntaxDB;
-    private doc: Document;
+    private doc: Document | null;
 
-    constructor(doc: Document, syntaxdb: moosedb.MooseSyntaxDB) {
-        this.doc = doc
+    constructor(syntaxdb: moosedb.MooseSyntaxDB, doc: Document | null = null) {
+        this.doc = doc;
         this.syntaxdb = syntaxdb;
+    }
+
+    public setDoc(doc: Document) {
+        this.doc = doc;
+    }
+    public getDoc() {
+        if (this.doc === null) {
+            throw Error('document no set');
+        }
+        return this.doc;
+    }
+
+    private static getWordAt(line: string, column: number, regex: string = "_0-9a-zA-Z") {
+
+        let word: string;
+        let range: [number, number];
+
+        let left_regex = new RegExp("[" + regex + "]+$"); // $ matches the end of a line
+        let right_regex = new RegExp("[^" + regex + "]");
+
+        // Search for the word's beginning
+        let left = line.slice(0, column + 1).search(left_regex);
+        // Search for the word's end
+        let right = line.slice(column).search(right_regex);
+
+        if (left < 0) {
+            // we are not in a word
+            return null;
+        } else if (right < 0) {
+            // The last word in the string is a special case.
+            word = line.slice(left);
+            range = [left, line.length];
+        } else {
+            // Return the word, using the located bounds to extract it from the string.
+            word = line.slice(left, right + column);
+            range = [left, right + column];
+        }
+
+        if (word === "") {
+            // don't allow empty strings
+            return null;
+        }
+        return {
+            word: word,
+            start: range[0],
+            end: range[1]
+        };
+
+    }
+
+    /** find node for a cursor position, and the path to it
+    * 
+    * @param pos position of cursor
+    * @param regex defines characters allowed in a word
+    */
+    public async findCurrentNode(pos: Position, regex: string = "_0-9a-zA-Z") {
+
+        let match: null | moosedb.nodeMatch = null;
+
+        let line = this.getDoc().getTextForRow(pos.row);
+        let wordMatch = MooseDoc.getWordAt(line, pos.column, regex);
+        if (wordMatch === null) {
+            return null;
+        }
+        let { word, start, end } = wordMatch;
+
+        let { configPath, explicitType } = await this.getCurrentConfigPath(pos);
+
+        if (line.slice(start - 1, end + 1) === "[" + word + "]") {
+            // block
+            configPath.push(word);
+            match = await this.syntaxdb.matchSyntaxNode(configPath);
+        } else if (line.slice(start - 3, end + 1) === "[./" + word + "]") {
+            //sub-block
+            configPath.push(word);
+            match = await this.syntaxdb.matchSyntaxNode(configPath);
+        } else if (/\s*type\s*=\s*/.test(line.slice(0, start - 1))) {
+            // type parameter
+            match = await this.syntaxdb.matchSyntaxNode(configPath);
+            if (match !== null) {
+                let typedPath = this.syntaxdb.getTypedPath(configPath, word, match.fuzzyOnLast);
+                match = await this.syntaxdb.matchSyntaxNode(typedPath);
+                configPath.push(word);
+            }
+        } else if (/\s*=.*/.test(line.slice(end + 1))) {
+            // parameter name
+            let params = await this.syntaxdb.fetchParameterList(configPath, explicitType);
+            for (let param of params) {
+                if (param.name === word) {
+                    if (explicitType) {
+                        configPath.push(explicitType);
+                    }
+                    configPath.push(param.name);
+                    return { node: param, path: configPath, range: [start, end] };
+                }
+            }
+        }
+
+        if (match === null) {
+            return null;
+        }
+        return { node: match.node, path: configPath, range: [start, end] };
     }
 
     /** find available completions for a cursor position
@@ -120,7 +222,7 @@ export class MooseDoc {
         let match: RegExpExecArray | null;
 
         // get current line up to the cursor position
-        let line = this.doc.getTextInRange([pos.row, 0], [pos.row, pos.column]);
+        let line = this.getDoc().getTextInRange([pos.row, 0], [pos.row, pos.column]);
         let prefix = this.getPrefix(line);
 
         let { configPath, explicitType } = await this.getCurrentConfigPath(pos);
@@ -129,10 +231,11 @@ export class MooseDoc {
         if (this.isOpenBracketPair(line)) {
             completions = await this.completeOpenBracketPair(pos, configPath);
         } else if (this.isTypeParameter(line)) {
-            completions = await this.completeTypeParameter(line, configPath, explicitType);
+            completions = await this.completeTypeParameter(line, pos.column, configPath, explicitType);
         } else if (this.isParameterCompletion(line)) {
             completions = await this.completeParameter(configPath, explicitType);
         } else if (!!(match = otherParameter.exec(line))) {
+            // special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
             // TODO factor out, see above
             let param: moosedb.ParamNode;
             let paramName = match[1];
@@ -176,9 +279,37 @@ export class MooseDoc {
         let { row } = pos;
         let typePath;
 
-        let line = this.doc.getTextInRange([pos.row, 0], [pos.row, pos.column]);
+        let line = this.getDoc().getTextInRange([pos.row, 0], [pos.row, pos.column]);
 
         let normalize = (configPath: string[]) => ppath.join.apply(undefined, configPath).split(ppath.sep);
+
+        // find type path if below cursor line
+        let trow = row;
+        let tline = line;
+        while (true) {
+            if (trow + 1 >= this.getDoc().getLineCount()) {
+                break;
+            }
+
+            if (blockTagContent.test(tline) || blockCloseTop.test(tline) || blockCloseOneLevel.test(tline)) {
+                break;
+            }
+
+            let blockArray = blockType.exec(tline);
+            if (blockArray !== null) {
+                types.push({ config: [], name: blockArray[1] });
+                break;
+            }
+
+            trow += 1;
+            tline = this.getDoc().getTextForRow(trow);
+
+            // remove comments
+            let commentCharPos = tline.indexOf('#');
+            if (commentCharPos >= 0) {
+                tline = tline.substr(0, commentCharPos);
+            }
+        }
 
         while (true) {
             // test the current line for block markers
@@ -215,7 +346,7 @@ export class MooseDoc {
             if (row < 0) {
                 return { configPath: [] as string[], explicitType: null };
             }
-            line = this.doc.getTextForRow(row);
+            line = this.getDoc().getTextForRow(row);
 
             // remove comments
             let commentCharPos = line.indexOf('#');
@@ -253,18 +384,20 @@ export class MooseDoc {
         let completion: string;
 
         // get the postfix (to determine if we need to append a ] or not)
-        let postLine = this.doc.getTextInRange([pos.row, pos.column], [pos.row, pos.column + 1]);
+        let postLine = this.getDoc().getTextInRange([pos.row, pos.column], [pos.row, pos.column + 1]);
         let blockPostfix = postLine.length > 0 && postLine[0] === ']' ? '' : ']';
 
         // handle relative paths
-        let blockPrefix = configPath.length > 0 ? '[./' : '[';
+        //TODO this was in original code, but doesn't work with VSCode (as we don't use replacementPrefix)
+        // let blockPrefix = configPath.length > 0 ? '[./' : '['; 
+        let blockPrefix = configPath.length > 0 ? './' : '';
 
         // add block close tag to suggestions
         if (configPath.length > 0) {
             completions.push({
                 kind: "closing",
-                text: `[../${blockPostfix}`,
-                displayText: '..'
+                insertText: { type: "text", value: `../${blockPostfix}` }, // TODO originally included [ at start
+                displayText: '../'
             });
         }
 
@@ -281,13 +414,19 @@ export class MooseDoc {
                 completions.push({
                     kind: 'block',
                     displayText: '*',
-                    snippet: blockPrefix + '${1:name}' + blockPostfix
+                    insertText: {
+                        type: "snippet",
+                        value: blockPrefix + '${1:name}' + blockPostfix
+                    },
                 });
             } else if (completion !== '') {
                 if (completions.findIndex(c => c.displayText === completion) < 0) {
                     completions.push({
                         kind: "block",
-                        text: blockPrefix + completion + blockPostfix,
+                        insertText: {
+                            type: "text",
+                            value: blockPrefix + completion + blockPostfix
+                        },
                         displayText: completion
                     });
                 }
@@ -314,10 +453,10 @@ export class MooseDoc {
         return (match !== null) && (match[2] === type);
     }
 
-    /** gather subblocks of a given top block 
+    /** gather sub-blocks of a given top block 
      *  
      * @param blockName the name of the top block (e.g. Functions, PostProcessors)
-     * @param propertyNames 
+     * @param propertyNames include named properties of the subblock
      */
     private fetchSubBlockList(blockName: string, propertyNames: string[]) {
         let i = 0;
@@ -329,10 +468,10 @@ export class MooseDoc {
         } = { name: '', properties: {} };
         let filterList = Array.from(propertyNames).map(property => ({ name: property, re: new RegExp(`^\\s*${property}\\s*=\\s*([^\\s#=\\]]+)$`) }));
 
-        let nlines = this.doc.getLineCount();
+        let nlines = this.getDoc().getLineCount();
 
         // find start of selected block
-        while (i < nlines && this.doc.getTextForRow(i).indexOf(`[${blockName}]`) === -1) {
+        while (i < nlines && this.getDoc().getTextForRow(i).indexOf(`[${blockName}]`) === -1) {
             i++;
         }
 
@@ -342,7 +481,7 @@ export class MooseDoc {
             if (i >= nlines) {
                 break;
             }
-            let line = this.doc.getTextForRow(i);
+            let line = this.getDoc().getTextForRow(i);
             if (blockCloseTop.test(line)) {
                 break;
             }
@@ -394,7 +533,11 @@ export class MooseDoc {
 
                 completions.push({
                     kind: "block",
-                    text: name,
+                    insertText: {
+                        type: "text",
+                        value: name
+                    },
+                    displayText: name,
                     description: doc.join(' ')
                 });
             }
@@ -410,12 +553,19 @@ export class MooseDoc {
 
     // Filename completions
     private computeFileNameCompletion(wildcards: string[]) {
-        let filePath = ppath.dirname(this.doc.getPath());
+        let filePath = ppath.dirname(this.getDoc().getPath());
         let dir = fs.readdirSync(filePath);  // TODO this should be async
 
         let completions: Completion[] = [];
         for (let name of Array.from(dir)) {
-            completions.push({ kind: "value", text: name });
+            completions.push({
+                kind: "value",
+                insertText: {
+                    type: "text",
+                    value: name
+                },
+                displayText: name
+            });
         }
 
         return completions;
@@ -437,13 +587,33 @@ export class MooseDoc {
         };
 
         if (param.cpp_type === 'bool' && singleOK || this.isVectorOf(param.cpp_type, 'bool') && vectorOK) {
-            completions = [{ kind: 'value', text: 'true' }, { kind: 'value', text: 'false' }];
+            completions = [
+                {
+                    kind: 'value',
+                    insertText: {
+                        type: "text",
+                        value: 'true'
+                    },
+                    displayText: 'true'
+                },
+                {
+                    kind: 'value',
+                    insertText: {
+                        type: "text",
+                        value: 'false'
+                    },
+                    displayText: 'false'
+                }];
         } else if (param.cpp_type === 'MooseEnum' && singleOK || param.cpp_type === 'MultiMooseEnum' && vectorOK) {
             if (param.options !== null && param.options !== undefined) {
                 for (let option of Array.from(param.options.split(' '))) {
                     completions.push({
                         kind: 'value',
-                        text: option
+                        insertText: {
+                            type: "text",
+                            value: option
+                        },
+                        displayText: option
                     });
                 }
             }
@@ -463,7 +633,14 @@ export class MooseDoc {
             completions = this.computeSubBlockNameCompletion(['VectorPostprocessors'], ['type']);
         } else if (param.cpp_type === 'OutputName' && singleOK || this.isVectorOf(param.cpp_type, 'OutputName') && vectorOK) {
             for (let output of ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr']) {
-                completions.push({ text: output, kind: "value" });
+                completions.push({
+                    kind: "value",
+                    insertText: {
+                        type: "text",
+                        value: output
+                    },
+                    displayText: output
+                });
             }
         } else if (hasType('FileName') || hasType('MeshFileName')) {
             completions = this.computeFileNameCompletion(['*.e']);
@@ -474,10 +651,11 @@ export class MooseDoc {
 
     /** provide completions for a type parameter
       * 
-      * @param pos 
+      * @param line the text for the line
+      * @param column the position of the cursor on the line
       * @param configPath 
       */
-    private async completeTypeParameter(line: string, configPath: string[], explicitType: string | null) {
+    private async completeTypeParameter(line: string, pos: number, configPath: string[], explicitType: string | null) {
 
         let completions: Completion[] = [];
         let completion: string;
@@ -500,15 +678,19 @@ export class MooseDoc {
         }
 
         // find yaml node that matches the current config path best
-        let newmatch = await this.syntaxdb.matchSyntaxNode(configPath);
-        if (newmatch !== null) {
-            let { node } = newmatch;
+        let newMatch = await this.syntaxdb.matchSyntaxNode(configPath);
+        if (newMatch !== null) {
+            let { node } = newMatch;
             // iterate over subblocks and add final yaml path element to suggestions
-            for (let subNode of Array.from(node.subblocks || [])) {
+            for (let subNode of await this.syntaxdb.iterateSubBlocks(node, configPath)) {
                 completion = subNode.name.split('/').slice(-1)[0];
                 completions.push({
                     kind: "type",
-                    text: completion,
+                    insertText: {
+                        type: "text",
+                        value: line[pos - 1] === "=" ? " " + completion : completion
+                    },
+                    displayText: completion,
                     description: subNode.description
                 });
             }
@@ -567,17 +749,24 @@ export class MooseDoc {
                 }
             }
 
-            completions.push({
+            let completion: Completion = {
                 kind: param.name === 'type' ? 'type' : "parameter",
                 required: param.required.toLowerCase() === "yes" ? true : false,
                 displayText: param.name,
-                snippet: param.name + ' = ${1:' + defaultValue + '}',
+                insertText: {
+                    type: "snippet",
+                    value: param.name + ' = ${1:' + defaultValue + '}'
+                },
                 description: param.description,
-            });
+            };
+            // TODO remove existing "= <value>"
+
+            completions.push(completion);
         }
         return completions;
     }
 
+    // TODO add parameters and types
     /**
      * assess the outline of the whole document,
      * returning the outline structure of the document,
@@ -588,11 +777,12 @@ export class MooseDoc {
         let outline: OutlineItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
 
+        let line: string = "";
         let level = 0;
         let blockName: string;
 
-        for (var row = 0; row < this.doc.getLineCount(); row++) {
-            let line = this.doc.getTextForRow(row);
+        for (var row = 0; row < this.getDoc().getLineCount(); row++) {
+            line = this.getDoc().getTextForRow(row);
 
             // remove comments and leading/trailing spaces
             // TODO what if if within "string" definition? (should use better regex)
@@ -603,10 +793,11 @@ export class MooseDoc {
                 // test we are not already in a top block
                 if (level > 0) {
                     syntaxErrors.push({
-                        row: row, msg: 'block opened before previous closed',
+                        row: row, columns: [0, line.length],
+                        msg: 'block opened before previous one closed',
                         insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
                     });
-                    this.updateEndRows(outline, 1, level, row - 1);
+                    this.updateEndRows(outline, 1, level, row - 1, line.length);
                     level = 0;
                 }
 
@@ -615,7 +806,8 @@ export class MooseDoc {
                 blockName = blocknames !== null ? blocknames[1] : '';
                 if (outline.map(o => o.name).indexOf(blockName) !== -1) {
                     syntaxErrors.push({
-                        row: row, msg: 'duplicate block name'
+                        row: row, columns: [0, line.length],
+                        msg: 'duplicate block name'
                     });
                 }
                 let descript = '';
@@ -624,7 +816,8 @@ export class MooseDoc {
                 // check the block name exists
                 if (match === null) {
                     syntaxErrors.push({
-                        row: row, msg: 'block name does not exist'
+                        row: row, columns: [0, line.length],
+                        msg: 'block name does not exist'
                     });
                 } else {
                     descript = match.node.description;
@@ -636,7 +829,7 @@ export class MooseDoc {
                     kind: 'block',
                     description: descript,
                     level: 1,
-                    start: row,
+                    start: [row, line.length],
                     end: null,
                     children: []
                 });
@@ -645,39 +838,43 @@ export class MooseDoc {
             } else if (blockCloseTop.test(line)) {
                 if (level > 1) {
                     syntaxErrors.push({
-                        row: row, msg: 'closed parent block before closing children',
+                        row: row, columns: [0, line.length],
+                        msg: 'closed parent block before closing children',
                         insertionBefore: "[../]\n".repeat(level - 1)
                     });
-                    this.updateEndRows(outline, 2, level, row - 1);
+                    this.updateEndRows(outline, 2, level, row - 1, line.length);
 
                 } else if (level < 1) {
                     syntaxErrors.push({
-                        row: row, msg: 'closed block before opening one',
+                        row: row, columns: [0, line.length],
+                        msg: 'closed block before opening new one',
                         insertionBefore: "[${1:name}]\n"
                     });
                 }
-                this.updateEndRows(outline, 1, 1, row);
+                this.updateEndRows(outline, 1, 1, row, line.length);
                 level = 0;
             } else if (blockOpenOneLevel.test(line)) {
 
                 // check for errors
                 if (level === 0) {
                     syntaxErrors.push({
-                        row: row, msg: 'opening sub-block before main block',
+                        row: row, columns: [0, line.length],
+                        msg: 'opening sub-block before main block open',
                         insertionBefore: "[${1:name}]\n"
                     });
                     level = 1;
                 }
 
                 // get parent node
-                let {child, config} = this.getInnerChild(outline, level);
+                let { child, config } = this.getInnerChild(outline, level);
 
                 // get details of the block
                 let blockregex = blockOpenOneLevel.exec(line);
                 blockName = blockregex !== null ? blockregex[1] : '';
                 if (child.children.map(o => o.name).indexOf(blockName) !== -1) {
                     syntaxErrors.push({
-                        row: row, msg: 'duplicate block name'
+                        row: row, columns: [0, line.length],
+                        msg: 'duplicate block name'
                     });
                 }
                 let descript = '';
@@ -697,7 +894,7 @@ export class MooseDoc {
                     kind: 'block',
                     description: descript,
                     level: level,
-                    start: row,
+                    start: [row, line.length],
                     end: null,
                     children: []
                 });
@@ -705,17 +902,19 @@ export class MooseDoc {
             } else if (blockCloseOneLevel.test(line)) {
                 if (level === 0) {
                     syntaxErrors.push({
-                        row: row, msg: 'closing sub-block when outside blocks',
+                        row: row, columns: [0, line.length],
+                        msg: 'closing sub-block when outside blocks',
                         // insertionAfter: "[]\n"
                     });
                 } else if (level === 1) {
                     syntaxErrors.push({
-                        row: row, msg: 'closing sub-block when inside main block',
+                        row: row, columns: [0, line.length],
+                        msg: 'closing sub-block when inside main block',
                         // insertionAfter: "[]\n"
                     });
                 } else {
-                    let {child} = this.getInnerChild(outline, level);
-                    child.end = row;
+                    let { child } = this.getInnerChild(outline, level);
+                    child.end = [row, line.length];
                     level--;
                 }
             } // TODO get parameters and check against syntax
@@ -723,10 +922,11 @@ export class MooseDoc {
 
         if (level !== 0) {
             syntaxErrors.push({
-                row: row, msg: 'block(s) unclosed',
+                row: row, columns: [0, line.length],
+                msg: 'final block(s) unclosed',
                 insertionAfter: "[../]\n".repeat(level - 1) + "[]\n"
             });
-            this.updateEndRows(outline, 1, level, row);
+            this.updateEndRows(outline, 1, level, row, 2);
         }
 
         return { outline: outline, errors: syntaxErrors };
@@ -734,14 +934,14 @@ export class MooseDoc {
 
     // update the end row for blocks
     private updateEndRows(outline: OutlineItem[],
-        startLevel: number, endLevel: number, row: number) {
+        startLevel: number, endLevel: number, row: number, length: number) {
         if (outline.length === 0) {
             return;
         }
         let item: OutlineItem = outline[outline.length - 1];
         for (let l = 1; l < endLevel + 1; l++) {
             if (l >= startLevel) {
-                item.end = row;
+                item.end = [row, length];
             }
             if (item.children.length === 0) {
                 break;
@@ -750,7 +950,7 @@ export class MooseDoc {
         }
     }
 
-    private getInnerChild(outline: OutlineItem[], level: number){
+    private getInnerChild(outline: OutlineItem[], level: number) {
 
         let item: OutlineItem = outline[outline.length - 1];
         let config = [item.name];
@@ -758,7 +958,7 @@ export class MooseDoc {
             item = item.children[item.children.length - 1];
             config.push(item.name);
         }
-        return {child: item, config: config};
+        return { child: item, config: config };
     }
 
 }
