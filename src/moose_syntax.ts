@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as ppath from 'path';
 import * as util from 'util';
+import * as cp from 'child_process';
 
 // interface for dictionary returned by ./moose-app --yaml
 export interface ParamNode {
@@ -132,6 +133,68 @@ export class MooseSyntaxDB {
             yamlPath: this.yaml_path,
             jsonPath: this.json_path
         };
+    }
+
+    // TODO createFiles needs testing
+    /** outputs a syntax.yaml and syntax.json file
+     * 
+     * @param appPath the path to the MOOSE application 
+     * @param outPath if null will output to the same path as the application
+     * @param allowTestObjs adds the option --allow-test-objects
+     */
+    public async createFiles(appPath: string, outPath: string | null = null, allowTestObjs: boolean = true) {
+
+        const writeFile = util.promisify(fs.writeFile);
+        if (outPath === null) {
+            outPath = ppath.parse(appPath).dir;
+        }
+
+        // build yaml
+        let yamlData = "";
+        let yargs = ['--yaml'];
+        if (allowTestObjs) { yargs.push('--allow-test-objects'); }
+        let appYaml = cp.spawn(appPath, yargs, { stdio: ['pipe', 'pipe', 'ignore'] });
+
+        appYaml.stdout.on('data', data => yamlData += data);
+
+        try {
+            yamlData = await new Promise<string>((resolve, reject) =>
+                appYaml.on('close', function (code, signal) {
+                    if (code === 0) {
+                        return resolve(yamlData);
+                    } else {
+                        return reject({ code, output: yamlData, appPath });
+                    }
+                }));
+        } catch (err) {
+            this.handleError(err);
+        }
+
+        await writeFile(ppath.join(outPath, "syntax.yaml"), yamlData, { encoding: "utf8" });
+
+        // build json
+        let jsonData = "";
+        let jargs = ['--json'];
+        if (allowTestObjs) { jargs.push('--allow-test-objects'); }
+        let appJson = cp.spawn(appPath, jargs, { stdio: ['pipe', 'pipe', 'ignore'] });
+
+        appJson.stdout.on('data', data => jsonData += data);
+
+        try {
+            jsonData = await new Promise<string>((resolve, reject) =>
+                appYaml.on('close', function (code, signal) {
+                    if (code === 0) {
+                        return resolve(jsonData);
+                    } else {
+                        return reject({ code, output: jsonData, appPath });
+                    }
+                }));
+        } catch (err) {
+            this.handleError(err);
+        }
+
+        await writeFile(ppath.join(outPath, "syntax.json"), jsonData, { encoding: "utf8" });
+
     }
 
     /**
@@ -374,7 +437,7 @@ export class MooseSyntaxDB {
 
     // TODO this should be a generator method (yield), 
     // but not sure can be implemented yet (see https://stackoverflow.com/questions/44883643/how-to-declare-async-generator-function)
-    public async iterateSubBlocks (node: SyntaxNode, configPath: string[], addJsonData = true) {
+    public async iterateSubBlocks(node: SyntaxNode, configPath: string[], addJsonData = true) {
 
         let subNodes = [];
 
@@ -384,7 +447,7 @@ export class MooseSyntaxDB {
                 // TODO do we need to deal with typed paths?
                 await this.addJSONData(subNode, subNode.name.substr(1).split("/"));
             }
-            
+
             subNodes.push(subNode);
         }
 
