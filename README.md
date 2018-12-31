@@ -6,79 +6,74 @@
 This extension provides language support and IntelliSense for input files of MOOSE (Multiphysics Object Oriented Simulation Environment) applications.
 
 <aside class="notice">
-Note: Major API change occurred in v0.7.0
+<b>Note</b>: A major API change occurred in v0.7.0
 </aside>
 
 ## Features
 
 - Syntax Highlighting
-- Autocompletion
+- [Autocompletion](#auto-completion)
 - Code-Folding
 - Outline Tree
 - Hover Definitions
-- Format Document
+- [Format Document](#auto-formatting)
 - Identify Syntax Errors
 - Peek/GoTo Source Files
 
-### Auto Completion
+### Auto Completion Demo
 
 ![Auto-completion](images/auto-complete.gif)
 
-### Introspection
+### Introspection Demo
 
 ![Introspection](images/introspection.gif)
 
-### IntelliSense
+## Loading MOOSE Syntax Data
 
-VSCode for MOOSE builds a mapping of MOOSE object names to their defining source file (<NAME>.C) within the workspace.
+MOOSE object and hierarchy data is read primarily from the YAML file you can create from your MOOSE application:
 
-Note that multiple folders can be added to a workspace by: `File -> Add Folder To Workspace...`.
-Therefore, in order to create mappings for core MOOSE objects, the main MOOSE library folder should be added to the workspace.
+    >> ./moose-opt --yaml > syntax.yaml
 
-Rules for inclusion/exclusion of file and folder regexes are user controllable *via* [Settings](#settings).
+Additional data (descriptions and source file paths) will also be read, if available, from the JSON output:
 
-### Hover/Peek/GoTo Definitions
+    >> ./moose-opt --json > syntax.json
 
-![GoTo/Peek Definitions](images/peek_definitions.gif)
+These can also be created within VS Code *via* selecting '`MOOSE: Create Syntax Files`' in the Command Palette (`Cmnd+Shift+P`), or downloading example files from the [Extension Repository](https://github.com/chrisjsewell/vscode-moose/tree/master/src/test).
 
-The C/C++ extension is required for syntax highlighting of the C file.
+By default, these files are expected to be in the top-level of the workspace, but their paths can be altered in the [Settings](#settings).
 
-Hovering over MOOSE objects attempts to retrieve the text residing in `addClassDescription`.
+## Auto-Completion
 
-### Autocomplete
+Autocompletion is triggered either by `Ctrl+Space` or typing `[` or `=`.
 
-Autocompletion triggers:
+## Auto-Formatting
 
-- for Blocks is triggered after typing `[`,
-- for Moose Objects is triggered after typing `type =`,
+Selecting the `Format Document` option will format the document by:
 
-![Autocomplete](images/autocomplete.gif)
+- Indenting the sections according to their level (the number of space per indentation can be controlled in the [Settings](#settings)).
+- Removing multiple blank lines.
 
-### Find/Peek All References
-
-Looks for all references on the right side of `=` assignments,
-and initialisations (as sub-blocks) in Variables/AuxVariables.
-
-![Find/Peek All References](images/find_all_references.gif)
+Format as you type can also be set in the [general settings](https://code.visualstudio.com/docs/getstarted/settings) (`editor.formatOnType: true`).
 
 ## Settings
 
 Settings are configured in `Preferences -> Settings`:
 
-| Name                         | Description                                                                                               |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------|
-| `moose.exclude.workspaces`   | Specifies the workspace regexes to ignore when searching for MOOSE objects                                |
-| `moose.exclude.relpaths`     | Specifies the path regexes (relative to workspaces) to ignore when searching for MOOSE objects            |
-| `moose.include.modules`      | Specifies the moose module folders to search in for MOOSE Objects (`**/modules/<MODULE>/src/<TYPE>/*.C`)  |
-| `moose.include.types`        | Specifies the src subfolders to search in for MOOSE Objects (`**/framework/src/<TYPE>/*.C`)               |
-| `moose.include.relpaths`     | Specifies additional path regexes (relative to workspaces) to search for MOOSE Objects                    |
-| `moose.object.alias`         | Name aliases of objects, i.e. set by registerMooseObjectAliased                                           |
+| Name                | Description                                   |
+| ------------------- | ----------------------------------------------|
+| `moose.syntax.yaml` | the path of the YAML file                     |
+| `moose.syntax.json` | the path of the JSON file                     |
+| `moose.tab.space`   | the number of spaces per indentation          |
+| `moose.log.debug`   | log debug and warning messages to the console |
+
+![](images/settings.png)
 
 ## Commands
 
 Accessed with `Cmnd+Shift+P`:
 
 - `MOOSE: Reset MOOSE Objects Database`
+- `MOOSE: Create Syntax Files`
 
 ## How to install from Marketplace
 
