@@ -50,6 +50,7 @@ Autocompletion is triggered either by `Ctrl+Space` or typing `[` or `=`.
 
 Files are diagnosed for syntax and formatting issues, including:
 
+- Unclosed blocks
 - Duplicate blocks/parameters
 - Rejected block/parameter names
 - Bad block indentations
