@@ -103,6 +103,10 @@ This extension is hosted at Visual Studio Marketplace
 
 Major API change (using syntax.yaml)
 
+## Acknowledgements
+
+Thanks to Daniel Schwen for supplying code for [MOOSE autocompletion in ATOM.io](https://github.com/dschwen/autocomplete-moose)
+
 ## VS Code Extension Development
 
 To create extension:
