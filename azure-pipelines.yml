@@ -79,7 +79,7 @@ jobs:
     env:
       DISPLAY: :10
 
-- job: Mocha-macOS
+- job: Mocha_macOS
   pool:
     name: Hosted macOS
     demands: npm
