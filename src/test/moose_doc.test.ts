@@ -346,7 +346,7 @@ suite("MooseDoc Tests", function () {
                 {
                     msg: "multiple blank lines", type: "blank-lines",
                     start: [11, 0], end: [13, 0],
-                    text: ""
+                    text: "a"
                 }
             ]
         });
