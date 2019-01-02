@@ -7,6 +7,7 @@ import ppath = require('path');
 import * as fs from 'fs';
 
 import * as moosedb from './moose_syntax';
+import { stringify } from 'querystring';
 
 /**
  * position within a document
@@ -772,176 +773,212 @@ export class MooseDoc {
      * returning the outline structure of the document,
      * and a list of syntax errors
      */
-    public async assessOutline() {
+    public async assessOutline(tabLength: number = 4) {
 
-        let outline: OutlineItem[] = [];
+        let outlineItems: OutlineItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
 
         let line: string = "";
-        let level = 0;
-        let blockName: string;
+        let currLevel = 0; // the current level
 
         for (var row = 0; row < this.getDoc().getLineCount(); row++) {
+
             line = this.getDoc().getTextForRow(row);
 
             // remove comments and leading/trailing spaces
             // TODO what if if within "string" definition? (should use better regex)
-            line = line.trim().split("#")[0].trim();
+            // line = line.trim().split("#")[0].trim();
 
             if (blockOpenTop.test(line)) {
-
-                // test we are not already in a top block
-                if (level > 0) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'block opened before previous one closed',
-                        insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
-                    });
-                    this.updateEndRows(outline, 1, level, row - 1, line.length);
-                    level = 0;
-                }
-
-                // get details of the block
-                let blocknames = blockOpenTop.exec(line);
-                blockName = blocknames !== null ? blocknames[1] : '';
-                if (outline.map(o => o.name).indexOf(blockName) !== -1) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'duplicate block name'
-                    });
-                }
-                let descript = '';
-                let match = await this.syntaxdb.matchSyntaxNode([blockName]);
-
-                // check the block name exists
-                if (match === null) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'block name does not exist'
-                    });
-                } else {
-                    descript = match.node.description;
-                }
-
-                // add the block to the outline 
-                outline.push({
-                    name: blockName,
-                    kind: 'block',
-                    description: descript,
-                    level: 1,
-                    start: [row, line.length],
-                    end: null,
-                    children: []
-                });
-                level = 1;
-
+                await this.assessMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
+                currLevel = 1;
             } else if (blockCloseTop.test(line)) {
-                if (level > 1) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'closed parent block before closing children',
-                        insertionBefore: "[../]\n".repeat(level - 1)
-                    });
-                    this.updateEndRows(outline, 2, level, row - 1, line.length);
-
-                } else if (level < 1) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'closed block before opening new one',
-                        insertionBefore: "[${1:name}]\n"
-                    });
-                }
-                this.updateEndRows(outline, 1, 1, row, line.length);
-                level = 0;
+                this.closeMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
+                currLevel = 0;
             } else if (blockOpenOneLevel.test(line)) {
-
-                // check for errors
-                if (level === 0) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'opening sub-block before main block open',
-                        insertionBefore: "[${1:name}]\n"
-                    });
-                    level = 1;
-                }
-
-                // get parent node
-                let { child, config } = this.getInnerChild(outline, level);
-
-                // get details of the block
-                let blockregex = blockOpenOneLevel.exec(line);
-                blockName = blockregex !== null ? blockregex[1] : '';
-                if (child.children.map(o => o.name).indexOf(blockName) !== -1) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'duplicate block name'
-                    });
-                }
-                let descript = '';
-                config.push(blockName);
-                let match = await this.syntaxdb.matchSyntaxNode([blockName]);
-
-                // check the block name exists
-                if (match === null) {
-
-                } else {
-                    descript = match.node.description;
-                }
-
-                level++;
-                child.children.push({
-                    name: blockName,
-                    kind: 'block',
-                    description: descript,
-                    level: level,
-                    start: [row, line.length],
-                    end: null,
-                    children: []
-                });
-
+                currLevel = await this.assessSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
             } else if (blockCloseOneLevel.test(line)) {
-                if (level === 0) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'closing sub-block when outside blocks',
-                        // insertionAfter: "[]\n"
-                    });
-                } else if (level === 1) {
-                    syntaxErrors.push({
-                        row: row, columns: [0, line.length],
-                        msg: 'closing sub-block when inside main block',
-                        // insertionAfter: "[]\n"
-                    });
-                } else {
-                    let { child } = this.getInnerChild(outline, level);
-                    child.end = [row, line.length];
-                    level--;
-                }
+                currLevel = this.closeSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
             } // TODO get parameters and check against syntax
         }
 
-        if (level !== 0) {
+        // check no blocks are left unclosed
+        if (currLevel !== 0) {
             syntaxErrors.push({
                 row: row, columns: [0, line.length],
                 msg: 'final block(s) unclosed',
-                insertionAfter: "[../]\n".repeat(level - 1) + "[]\n"
+                insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
             });
-            this.updateEndRows(outline, 1, level, row, 2);
+            MooseDoc.closeBlocks(outlineItems, 1, currLevel-1, row, "");
         }
 
-        return { outline: outline, errors: syntaxErrors };
+        return { outline: outlineItems, errors: syntaxErrors };
     }
 
-    // update the end row for blocks
-    private updateEndRows(outline: OutlineItem[],
-        startLevel: number, endLevel: number, row: number, length: number) {
+    private async assessMainBlock(level: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
+        
+        let blockName: string;
+        
+        // test we are not already in a top block
+        if (level > 0) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'block opened before previous one closed',
+                insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
+            });
+            MooseDoc.closeBlocks(outlineItems, 1, level - 1, row - 1, line);
+            level = 0;
+        }
+
+        // get details of the block
+        let blocknames = blockOpenTop.exec(line);
+        blockName = blocknames !== null ? blocknames[1] : '';
+        if (outlineItems.map(o => o.name).indexOf(blockName) !== -1) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'duplicate block name'
+            });
+        }
+        let descript = '';
+        let match = await this.syntaxdb.matchSyntaxNode([blockName]);
+        // check the block name exists
+        if (match === null) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'block name does not exist'
+            });
+        }
+        else {
+            descript = match.node.description;
+        }
+
+        // add the block to the outline 
+        outlineItems.push({
+            name: blockName,
+            kind: 'block',
+            description: descript,
+            level: 1,
+            start: [row, line.search(/\[/)],
+            end: null,
+            children: []
+        });
+        
+        return;
+    }
+
+    private closeMainBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
+
+        // check all sub-blocks have been closed
+        if (currLevel > 1) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'closed parent block before closing children',
+                insertionBefore: "[../]\n".repeat(currLevel - 1)
+            });
+            MooseDoc.closeBlocks(outlineItems, 2, currLevel - 1, row - 1, line);
+        }
+        // check a main block has been opened
+        else if (currLevel < 1) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'closed block before opening new one',
+                insertionBefore: "[${1:name}]\n"
+            });
+        }
+        MooseDoc.closeBlocks(outlineItems, 1, 0, row, line);
+    }
+
+    private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
+
+        let currBlockName: string;
+
+        // check we are in a main block
+        if (currLevel === 0) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'opening sub-block before main block open',
+                insertionBefore: "[${1:name}]\n"
+            });
+            currLevel = 1;
+        }
+
+        // get parent node
+        let { child, config } = MooseDoc.getFinalChild(outlineItems, currLevel);
+
+        // get details of the block
+        let blockregex = blockOpenOneLevel.exec(line);
+        currBlockName = blockregex !== null ? blockregex[1] : '';
+        if (child.children.map(o => o.name).indexOf(currBlockName) !== -1) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'duplicate block name'
+            });
+        }
+
+        let descript = '';
+        config.push(currBlockName);
+        let match = await this.syntaxdb.matchSyntaxNode([currBlockName]);
+        // check the block name exists
+        if (match === null) {
+        }
+        else {
+            descript = match.node.description;
+        }
+
+        currLevel++;
+        child.children.push({
+            name: currBlockName,
+            kind: 'block',
+            description: descript,
+            level: currLevel,
+            start: [row, line.search(/\[/)],
+            end: null,
+            children: []
+        });
+        return currLevel;
+    }
+
+    private closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
+        if (currLevel === 0) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'closing sub-block before opening main block',
+            });
+        }
+        else if (currLevel === 1) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'closing sub-block before opening one',
+            });
+        }
+        else {
+            let { child } = MooseDoc.getFinalChild(outlineItems, currLevel);
+            child.end = [row, line.length];
+            currLevel--;
+        }
+        return currLevel;
+    }
+
+    /** Once we find a block's closure, we update its item with details of the end row
+     * 
+     * @param outline 
+     * @param blockLevel the level of the block to close
+     * @param childLevels the number of child levels to also close
+     * @param row the row number of the closure
+     * @param length the length of the closure line
+     */
+    private static closeBlocks(outline: OutlineItem[],
+        blockLevel: number, childLevels: number, row: number, line: string) {
         if (outline.length === 0) {
             return;
         }
         let item: OutlineItem = outline[outline.length - 1];
-        for (let l = 1; l < endLevel + 1; l++) {
-            if (l >= startLevel) {
-                item.end = [row, length];
+        for (let l = 1; l < blockLevel + childLevels + 1; l++) {
+            if (l === blockLevel) {
+                let closePos = line.search(/\]/);
+                item.end = [row, closePos >= 0 ? closePos + 1 : 0];
+            } else if (l > blockLevel) {
+                item.end = [row, 0];
             }
             if (item.children.length === 0) {
                 break;
@@ -950,7 +987,12 @@ export class MooseDoc {
         }
     }
 
-    private getInnerChild(outline: OutlineItem[], level: number) {
+    /** navigate to the final child item of a certain level
+     * 
+     * @param outline 
+     * @param level 
+     */
+    private static getFinalChild(outline: OutlineItem[], level: number) {
 
         let item: OutlineItem = outline[outline.length - 1];
         let config = [item.name];

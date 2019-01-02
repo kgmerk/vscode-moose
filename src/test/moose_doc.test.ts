@@ -252,13 +252,13 @@ suite("MooseDoc Tests", function () {
     test("Outline (with errors)", function () {
         doc.text = `
 []
-[Kernels]
-    [./v1]
+ [Kernels]  # a comment
+    [./v1] # a comment
     [../]
 
 [Kernels]
     [./akernel]
-        type = ACBarrierFunction
+ type = ACBarrierFunction # a comment
         use_displaced_mesh = 1
     [../]
 
@@ -272,13 +272,13 @@ suite("MooseDoc Tests", function () {
                 kind: "block",
                 description: "",
                 level: 1,
-                start: [2, 9], end: [5, 9],
+                start: [2, 1], end: [5, 9],
                 children: [{
                     name: "v1",
                     description: "",
                     kind: "block",
                     level: 2,
-                    start: [3, 6], end: [4, 5],
+                    start: [3, 4], end: [4, 9],
                     children: []
                 }]
             },
@@ -287,13 +287,13 @@ suite("MooseDoc Tests", function () {
                 kind: "block",
                 description: "",
                 level: 1,
-                start: [6, 9], end: [13, 2],
+                start: [6, 0], end: [13, 0],
                 children: [{
                     name: "akernel",
                     description: "",
                     kind: "block",
                     level: 2,
-                    start: [7, 11], end: [10, 5],
+                    start: [7, 4], end: [10, 9],
                     children: []
                 }]
             }],
@@ -316,7 +316,7 @@ suite("MooseDoc Tests", function () {
             },
             {
                 row: 13,
-                columns: [0, 0],
+                columns: [0, 8],
                 msg: "final block(s) unclosed",
                 insertionAfter: "[]\n"
             }]

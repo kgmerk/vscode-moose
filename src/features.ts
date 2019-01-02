@@ -100,14 +100,11 @@ async function addTabEdits(mooseDoc: MooseDoc, line: string, row: number, edits:
     }
     let { configPath, explicitType } = await mooseDoc.getCurrentConfigPath({ row: row, column: column });
     let numSpaces = (configPath.length - 1) * tabLength;
-    if (explicitType !== null) {
+    if (explicitType !== null && !(/^\s*\[\.\.\/\]/.test(line) || /^\s*\[\]/.test(line))) {
         numSpaces += tabLength;
     }
     else if (/^\s*[^\s]+\s*=.*/.test(line)) { // /^\s*\[[^\s]*\].*/
         numSpaces += tabLength;
-    }
-    if (/^\s*\[\.\.\/\]/.test(line)) {
-        numSpaces -= tabLength;
     }
     const firstChar = line.search(/[^\s]/);
     if (firstChar > -1 && firstChar !== numSpaces) {
@@ -193,7 +190,7 @@ export class CompletionItemProvider implements vscode.CompletionItemProvider {
             else {
                 completion.kind = selectCompleteKind(mcomp.kind);
                 completion.insertText = mcomp.insertText.value;
-                
+
             }
             completions.push(completion);
         }
@@ -210,7 +207,7 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
             return null;
         }
         let range = new vscode.Range(new vscode.Position(...item.start), new vscode.Position(...item.end));
-        let selectRange = new vscode.Range(new vscode.Position(...item.start), new vscode.Position(...item.start));
+        let selectRange = new vscode.Range(new vscode.Position(...item.start), new vscode.Position(...item.start)); // TODO have correct selection range 
         let params = {
             name: item.name,
             detail: item.description,
