@@ -7,8 +7,6 @@ import ppath = require('path');
 import * as fs from 'fs';
 
 import * as moosedb from './moose_syntax';
-import { stringify } from 'querystring';
-import { configure } from 'vscode/lib/testrunner';
 
 /**
  * position within a document
