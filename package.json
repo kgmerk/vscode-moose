@@ -105,7 +105,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "postinstall": "node ./node_modules/vscode/bin/install",
-    "test": "npm run compile && node ./node_modules/vscode/bin/test"
+    "test": "npm run compile && node ./node_modules/vscode/bin/test",
+    "mocha": "node ./node_modules/mocha/bin/_mocha -u tdd --timeout 999999 --colors out/test/**/*.js"
   },
   "devDependencies": {
     "@types/glob-to-regexp": "^0.4.0",
