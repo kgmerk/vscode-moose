@@ -86,88 +86,60 @@ export class HoverProvider implements vscode.HoverProvider {
         // return new vscode.Hover("No Data Available");
     }
 }
-async function addTabEdits(mooseDoc: MooseDoc, line: string, row: number, edits: vscode.TextEdit[], tabLength = 4) {
-    // do nothing if line blank
-    if (/^\s*$/.test(line) || /^\s*#.*$/.test(line)) {
-        return;
-    }
-    let column: number;
-    if (/^\s*\[\]/.test(line) || /^\s*\[\.\.\/\]/.test(line)) {
-        column = 0;
-    }
-    else {
-        column = line.length;
-    }
-    let { configPath, explicitType } = await mooseDoc.getCurrentConfigPath({ row: row, column: column });
-    let numSpaces = (configPath.length - 1) * tabLength;
-    if (explicitType !== null && !(/^\s*\[\.\.\/\]/.test(line) || /^\s*\[\]/.test(line))) {
-        numSpaces += tabLength;
-    }
-    else if (/^\s*[^\s]+\s*=.*/.test(line)) { // /^\s*\[[^\s]*\].*/
-        numSpaces += tabLength;
-    }
-    const firstChar = line.search(/[^\s]/);
-    if (firstChar > -1 && firstChar !== numSpaces) {
-        let edit = new vscode.TextEdit(new vscode.Range(new vscode.Position(row, 0), new vscode.Position(row, firstChar)), " ".repeat(numSpaces));
-        edits.push(edit);
-    }
-}
+
 export class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEditProvider {
     private mooseDoc: MooseDoc;
     constructor(mooseDoc: MooseDoc) {
         this.mooseDoc = mooseDoc;
     }
     public async provideOnTypeFormattingEdits(document: vscode.TextDocument, position: vscode.Position, ch: string, options: vscode.FormattingOptions, token: vscode.CancellationToken): Promise<vscode.TextEdit[]> {
-        let edits: vscode.TextEdit[] = [];
+        let vsEdits: vscode.TextEdit[] = [];
+        let vsEdit: vscode.TextEdit;
         this.mooseDoc.setDoc(new VSDoc(document));
-        let { line: row } = position;
-        let line = this.mooseDoc.getDoc().getTextForRow(row);
-        await addTabEdits(this.mooseDoc, line, row, edits, vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
-        return edits;
+
+        let {edits} = await this.mooseDoc.assessOutline(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+        let row = position.line;
+
+        for (let edit of edits){
+            if (row >= edit.start[0] && row <= edit.end[0] && edit.msg === "wrong indentation"){
+                vsEdit = new vscode.TextEdit(
+                    new vscode.Range(
+                        new vscode.Position(...edit.start), 
+                        new vscode.Position(...edit.end)), 
+                        edit.text);
+                vsEdits.push(vsEdit);
+            }
+        }
+
+        return vsEdits;
     }
 }
+
 export class DocumentFormattingEditProvider implements vscode.DocumentFormattingEditProvider {
     private mooseDoc: MooseDoc;
     constructor(mooseDoc: MooseDoc) {
         this.mooseDoc = mooseDoc;
     }
     public async provideDocumentFormattingEdits(document: vscode.TextDocument): Promise<vscode.TextEdit[]> {
-        let edits: vscode.TextEdit[] = [];
-        let edit: vscode.TextEdit;
+        let vsEdits: vscode.TextEdit[] = [];
+        let vsEdit: vscode.TextEdit;
         this.mooseDoc.setDoc(new VSDoc(document));
-        const tabSpaces = vscode.workspace.getConfiguration('moose.tab').get('spaces', 4);
-        let lineCount = this.mooseDoc.getDoc().getLineCount();
-        let row = 0;
-        let emptyLines: number[] = [];
-        while (true) {
-            if (row >= lineCount) {
-                break;
-            }
-            let line = this.mooseDoc.getDoc().getTextForRow(row);
-            // correct tab spacing
-            try {
-                await addTabEdits(this.mooseDoc, line, row, edits, tabSpaces);
-            }
-            catch (err) {
-                console.log(err);
-            }
-            // remove multiple blank rows
-            if (/^\s*$/.test(line)) {
-                emptyLines.push(row);
-            }
-            else if (emptyLines.length > 1) {
-                edit = new vscode.TextEdit(new vscode.Range(new vscode.Position(emptyLines[0], 0), new vscode.Position(emptyLines[0] + emptyLines.length - 1, line.length)), "");
-                edits.push(edit);
-                emptyLines = [];
-            }
-            else {
-                emptyLines = [];
-            }
-            row = row + 1;
+
+        let {edits} = await this.mooseDoc.assessOutline(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+
+        for (let edit of edits){
+            vsEdit = new vscode.TextEdit(
+                new vscode.Range(
+                    new vscode.Position(...edit.start), 
+                    new vscode.Position(...edit.end)), 
+                    edit.text);
+            vsEdits.push(vsEdit);
         }
-        return edits;
+
+        return vsEdits;
     }
 }
+
 export class CompletionItemProvider implements vscode.CompletionItemProvider {
     private mooseDoc: MooseDoc;
     constructor(mooseDoc: MooseDoc) {
@@ -255,20 +227,20 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         this.command = vscode.commands.registerCommand(CodeActionsProvider.commandId, this.runCodeAction, this);
         subscriptions.push(this);
         this.diagnosticCollection = vscode.languages.createDiagnosticCollection();
-        vscode.workspace.onDidOpenTextDocument(this.dolint, this, subscriptions);
+        vscode.workspace.onDidOpenTextDocument(this.doLint, this, subscriptions);
         vscode.workspace.onDidCloseTextDocument((textDocument) => {
             this.diagnosticCollection.delete(textDocument.uri);
         }, null, subscriptions);
-        vscode.workspace.onDidSaveTextDocument(this.dolint, this);
+        vscode.workspace.onDidSaveTextDocument(this.doLint, this);
         // lint all open moose documents
-        vscode.workspace.textDocuments.forEach(this.dolint, this);
+        vscode.workspace.textDocuments.forEach(this.doLint, this);
     }
     public dispose(): void {
         this.diagnosticCollection.clear();
         this.diagnosticCollection.dispose();
         this.command.dispose();
     }
-    private async dolint(document: vscode.TextDocument) {
+    private async doLint(document: vscode.TextDocument) {
         if (document.languageId !== 'moose') {
             return;
         }
@@ -278,11 +250,20 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let message: string;
         let range: vscode.Range;
         this.mooseDoc.setDoc(new VSDoc(document));
-        let { errors } = await this.mooseDoc.assessOutline();
+        let { errors, edits } = await this.mooseDoc.assessOutline();
         for (let error of errors) {
             severity = vscode.DiagnosticSeverity.Error;
             message = error.msg;
             range = new vscode.Range(new vscode.Position(error.row, error.columns[0]), new vscode.Position(error.row, error.columns[1]));
+            diagnostic = new vscode.Diagnostic(range, message, severity);
+            diagnostics.push(diagnostic);
+        }
+        for (let edit of edits) {
+            severity = vscode.DiagnosticSeverity.Hint;
+            message = edit.msg;
+            range = new vscode.Range(
+                new vscode.Position(...edit.start), 
+                new vscode.Position(...edit.end));
             diagnostic = new vscode.Diagnostic(range, message, severity);
             diagnostics.push(diagnostic);
         }

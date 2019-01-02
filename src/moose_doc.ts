@@ -70,6 +70,12 @@ export interface SyntaxError {
     insertionBefore?: string;
     insertionAfter?: string;
 }
+export interface textEdit {
+    start: [number, number];
+    end: [number, number];
+    text: string;
+    msg: string;
+}
 
 function __guard__(value: RegExpMatchArray | null,
     transform: (regarray: RegExpMatchArray) => string) {
@@ -77,6 +83,7 @@ function __guard__(value: RegExpMatchArray | null,
 }
 
 // regexes
+let emptyLine = /^\s*$/;
 let insideBlockTag = /^\s*\[([^\]#\s]*)$/;
 let blockTagContent = /^\s*\[([^\]]*)\]/;
 let blockType = /^\s*type\s*=\s*([^#\s]+)/;
@@ -767,41 +774,63 @@ export class MooseDoc {
         return completions;
     }
 
-    // TODO add parameters and types
-    /**
-     * assess the outline of the whole document,
-     * returning the outline structure of the document,
-     * and a list of syntax errors
+    /** assess the outline of the whole document
+     * 
+     * @param indentLength the number of spaces per indent
+     * @returns outline structure, list of syntax errors, list of suggested text edits (to improve formatting)
+     * 
      */
-    public async assessOutline(tabLength: number = 4) {
+    public async assessOutline(indentLength: number = 4) {
 
         let outlineItems: OutlineItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
+        let textEdits: textEdit[] = [];
 
         let line: string = "";
-        let currLevel = 0; // the current level
+        let currLevel = 0;
+        let indentLevel = 0;
+        let emptyLines: number[] = [];
 
         for (var row = 0; row < this.getDoc().getLineCount(); row++) {
 
             line = this.getDoc().getTextForRow(row);
 
-            // remove comments and leading/trailing spaces
-            // TODO what if if within "string" definition? (should use better regex)
-            // line = line.trim().split("#")[0].trim();
+            emptyLines = this.detectBlankLines(emptyLines, row, textEdits, line);
 
             if (blockOpenTop.test(line)) {
                 await this.assessMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 currLevel = 1;
+                indentLevel = 0;
             } else if (blockCloseTop.test(line)) {
                 this.closeMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 currLevel = 0;
+                indentLevel = 0;
             } else if (blockOpenOneLevel.test(line)) {
                 currLevel = await this.assessSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
+                indentLevel = currLevel - 1;
             } else if (blockCloseOneLevel.test(line)) {
                 currLevel = this.closeSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
-            } // TODO get parameters and check against syntax
+                indentLevel = currLevel;
+            } else {
+                indentLevel = currLevel;
+            }
+            // TODO get parameters and check against syntax
+
+            // check all lines are at correct indentation level
+            let firstChar = line.search(/[^\s]/);
+            // console.log(row, firstChar, currLevel, currLevel*indentLength);
+            if (firstChar >= 0 && firstChar !== indentLevel * indentLength) {
+                textEdits.push({
+                    start: [row, 0],
+                    end: [row, firstChar],
+                    text: " ".repeat(indentLevel * indentLength),
+                    msg: "wrong indentation",
+                });
+            }
+
         }
 
+        emptyLines = this.detectBlankLines(emptyLines, row, textEdits);
         // check no blocks are left unclosed
         if (currLevel !== 0) {
             syntaxErrors.push({
@@ -809,16 +838,36 @@ export class MooseDoc {
                 msg: 'final block(s) unclosed',
                 insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
             });
-            MooseDoc.closeBlocks(outlineItems, 1, currLevel-1, row, "");
+            MooseDoc.closeBlocks(outlineItems, 1, currLevel - 1, row, "");
         }
+        emptyLines = this.detectBlankLines(emptyLines, row, textEdits, line);
 
-        return { outline: outlineItems, errors: syntaxErrors };
+        return { outline: outlineItems, errors: syntaxErrors, edits: textEdits };
+    }
+
+    /** detect multiple blank lines */
+    private detectBlankLines(emptyLines: number[], row: number, textEdits: textEdit[], line: string | null = null) {
+        if (line !== null && emptyLine.test(line)) {
+            emptyLines.push(row);
+        }
+        else {
+            if (emptyLines.length > 1) {
+                textEdits.push({
+                    start: [emptyLines[0], 0],
+                    end: [row - 1, line === null ? 0 : line.length],
+                    text: "",
+                    msg: "multiple blank lines",
+                });
+            }
+            emptyLines = [];
+        }
+        return emptyLines;
     }
 
     private async assessMainBlock(level: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
-        
+
         let blockName: string;
-        
+
         // test we are not already in a top block
         if (level > 0) {
             syntaxErrors.push({
@@ -862,7 +911,7 @@ export class MooseDoc {
             end: null,
             children: []
         });
-        
+
         return;
     }
 

@@ -262,6 +262,7 @@ suite("MooseDoc Tests", function () {
         use_displaced_mesh = 1
     [../]
 
+
         `;
         // mdoc.assessOutline().then(value => {
         //     console.log(value);
@@ -287,7 +288,7 @@ suite("MooseDoc Tests", function () {
                 kind: "block",
                 description: "",
                 level: 1,
-                start: [6, 0], end: [13, 0],
+                start: [6, 0], end: [14, 0],
                 children: [{
                     name: "akernel",
                     description: "",
@@ -315,11 +316,22 @@ suite("MooseDoc Tests", function () {
                 msg: "duplicate block name"
             },
             {
-                row: 13,
+                row: 14,
                 columns: [0, 8],
                 msg: "final block(s) unclosed",
                 insertionAfter: "[]\n"
-            }]
+            }],
+            edits: [
+                {msg: "wrong indentation",
+                start: [2, 0], end: [2, 1],
+                text: ""},
+                {msg: "wrong indentation",
+                start: [8, 0], end: [8, 1],
+                text: "        "},
+                {msg: "multiple blank lines",
+                start: [11, 0], end: [13, 0],
+                text: ""}
+            ]
         });
     });
 
