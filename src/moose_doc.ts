@@ -8,6 +8,7 @@ import * as fs from 'fs';
 
 import * as moosedb from './moose_syntax';
 import { stringify } from 'querystring';
+import { configure } from 'vscode/lib/testrunner';
 
 /**
  * position within a document
@@ -54,14 +55,20 @@ export interface Completion {
     required?: boolean;
 }
 
-export interface OutlineItem {
+export interface OutlineParamItem {
+    start: [number, number];
+    end: [number, number];
+    name: string;
+    description: string;
+}
+export interface OutlineBlockItem {
     start: [number, number];
     end: [number, number] | null;
-    kind: 'block' | 'parameter';
     level: number;
     name: string;
     description: string;
-    children: OutlineItem[];
+    children: OutlineBlockItem[];
+    parameters: OutlineParamItem[];
 }
 export interface SyntaxError {
     row: number;
@@ -71,7 +78,7 @@ export interface SyntaxError {
     insertionAfter?: string;
 }
 export interface textEdit {
-    type: "indent" | "blank-lines"; 
+    type: "indent" | "blank-lines";
     start: [number, number];
     end: [number, number];
     text: string;
@@ -783,7 +790,7 @@ export class MooseDoc {
      */
     public async assessOutline(indentLength: number = 4) {
 
-        let outlineItems: OutlineItem[] = [];
+        let outlineItems: OutlineBlockItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
         let textEdits: textEdit[] = [];
 
@@ -812,12 +819,17 @@ export class MooseDoc {
             } else if (blockCloseOneLevel.test(line)) {
                 currLevel = this.closeSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 indentLevel = currLevel;
+            } else if (/^\s*[_a-zA-Z0-9]+\s*=.*$/.test(line)) {
+                await this.assessParameter(line, outlineItems, syntaxErrors, row, currLevel);
+                indentLevel = currLevel;
             } else {
                 indentLevel = currLevel;
             }
-            // TODO get parameters and check against syntax
+
+            // TODO check all required parameters are present (on closing sub-block/block)
 
             // check all lines are at correct indentation level
+            // TODO indent lines after parameter definitions (that are not just comments) by extra space == '<name> = '
             let firstChar = line.search(/[^\s]/);
             if (firstChar >= 0 && firstChar !== indentLevel * indentLength) {
                 textEdits.push({
@@ -866,7 +878,7 @@ export class MooseDoc {
         return emptyLines;
     }
 
-    private async assessMainBlock(level: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
+    private async assessMainBlock(level: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
 
         let blockName: string;
 
@@ -906,18 +918,18 @@ export class MooseDoc {
         // add the block to the outline 
         outlineItems.push({
             name: blockName,
-            kind: 'block',
             description: descript,
             level: 1,
             start: [row, line.search(/\[/)],
             end: null,
-            children: []
+            children: [],
+            parameters: []
         });
 
         return;
     }
 
-    private closeMainBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
+    private closeMainBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
 
         // check all sub-blocks have been closed
         if (currLevel > 1) {
@@ -939,7 +951,7 @@ export class MooseDoc {
         MooseDoc.closeBlocks(outlineItems, 1, 0, row, line);
     }
 
-    private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
+    private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
 
         let currBlockName: string;
 
@@ -979,17 +991,17 @@ export class MooseDoc {
         currLevel++;
         child.children.push({
             name: currBlockName,
-            kind: 'block',
             description: descript,
             level: currLevel,
             start: [row, line.search(/\[/)],
             end: null,
-            children: []
+            children: [],
+            parameters: []
         });
         return currLevel;
     }
 
-    private closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineItem[]) {
+    private closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
         if (currLevel === 0) {
             syntaxErrors.push({
                 row: row, columns: [0, line.length],
@@ -1010,6 +1022,37 @@ export class MooseDoc {
         return currLevel;
     }
 
+    private async assessParameter(line: string, outlineItems: OutlineBlockItem[], syntaxErrors: SyntaxError[], row: number, currLevel: number) {
+        let paramNames = /^\s*([_a-zA-Z0-9]+)\s*=.*$/.exec(line);
+        let paramName = paramNames !== null ? paramNames[1] : '';
+        if (outlineItems.map(o => o.name).indexOf(paramName) !== -1) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'duplicate parameter name'
+            });
+        }
+        let descript = '';
+        let match = await this.findCurrentNode({ row: row, column: line.search(/[^\s]/) });
+        // check the block name exists
+        if (match === null) {
+            syntaxErrors.push({
+                row: row, columns: [0, line.length],
+                msg: 'parameter name does not exist for this block'
+            });
+        }
+        else {
+            descript = match.node.description;
+        }
+        // TODO check value of type parameters are correct for block
+        let { child: blockItem } = MooseDoc.getFinalChild(outlineItems, currLevel);
+        blockItem.parameters.push({
+            name: paramName,
+            description: descript,
+            start: [row, line.search(/[^/s]/)],
+            end: [row, line.length],
+        });
+    }
+
     /** Once we find a block's closure, we update its item with details of the end row
      * 
      * @param outline 
@@ -1018,12 +1061,12 @@ export class MooseDoc {
      * @param row the row number of the closure
      * @param length the length of the closure line
      */
-    private static closeBlocks(outline: OutlineItem[],
+    private static closeBlocks(outline: OutlineBlockItem[],
         blockLevel: number, childLevels: number, row: number, line: string) {
         if (outline.length === 0) {
             return;
         }
-        let item: OutlineItem = outline[outline.length - 1];
+        let item: OutlineBlockItem = outline[outline.length - 1];
         for (let l = 1; l < blockLevel + childLevels + 1; l++) {
             if (l === blockLevel) {
                 let closePos = line.search(/\]/);
@@ -1043,15 +1086,17 @@ export class MooseDoc {
      * @param outline 
      * @param level 
      */
-    private static getFinalChild(outline: OutlineItem[], level: number) {
+    private static getFinalChild(outline: OutlineBlockItem[], level: number) {
 
-        let item: OutlineItem = outline[outline.length - 1];
-        let config = [item.name];
+        let finalItem: OutlineBlockItem = outline[outline.length - 1];
+        let item: OutlineBlockItem;
+        let config = [finalItem.name];
         for (let l = 1; l < level; l++) {
-            item = item.children[item.children.length - 1];
-            config.push(item.name);
+            item = finalItem.children[finalItem.children.length - 1];
+            finalItem = item;
+            config.push(finalItem.name);
         }
-        return { child: item, config: config };
+        return { child: finalItem, config: config };
     }
 
 }

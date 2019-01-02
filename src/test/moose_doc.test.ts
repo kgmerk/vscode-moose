@@ -155,7 +155,7 @@ suite("MooseDoc Tests", function () {
             insertText: {
                 type: "text",
                 value: "ADKernels"
-             },
+            },
             displayText: "ADKernels",
             replacementPrefix: "["
         });
@@ -179,7 +179,7 @@ suite("MooseDoc Tests", function () {
             insertText: {
                 type: "text",
                 value: "ACBarrierFunction"
-             },
+            },
             displayText: "ACBarrierFunction",
             description: "Allen Cahn kernel used when 'mu' is a function of variables",
             replacementPrefix: ""
@@ -206,7 +206,7 @@ suite("MooseDoc Tests", function () {
             insertText: {
                 type: "snippet",
                 value: "variable = ${1:}"
-             },
+            },
             displayText: "variable",
             description: "The name of the variable that this Kernel operates on\n",
             replacementPrefix: "",
@@ -243,7 +243,7 @@ suite("MooseDoc Tests", function () {
                 insertText: {
                     type: "text",
                     value: "false"
-                 },
+                },
                 replacementPrefix: ""
             }
         ]);
@@ -270,33 +270,44 @@ suite("MooseDoc Tests", function () {
         return expect(mdoc.assessOutline()).to.eventually.eql({
             outline: [{
                 name: "Kernels",
-                kind: "block",
                 description: "",
                 level: 1,
                 start: [2, 1], end: [5, 9],
                 children: [{
                     name: "v1",
                     description: "",
-                    kind: "block",
                     level: 2,
                     start: [3, 4], end: [4, 9],
-                    children: []
-                }]
+                    children: [],
+                    parameters: []
+                }],
+                parameters: []
             },
             {
                 name: "Kernels",
-                kind: "block",
                 description: "",
                 level: 1,
                 start: [6, 0], end: [14, 0],
                 children: [{
                     name: "akernel",
                     description: "",
-                    kind: "block",
                     level: 2,
                     start: [7, 4], end: [10, 9],
-                    children: []
-                }]
+                    children: [],
+                    parameters: [
+                        {
+                            "description": "A string representing the Moose Object that will be built by this Action\n",
+                            "name": "type",
+                            "start": [8, 0], "end": [8, 37]
+                        },
+                        {
+                            "description": "Whether or not this object should use the displaced mesh for computation. Note that in the case this is true but no displacements are provided in the Mesh block the undisplaced mesh will still be used.\n",
+                            "start": [9, 0], "end": [9, 30],
+                            "name": "use_displaced_mesh",
+                        }
+                    ]
+                }],
+                parameters: []
             }],
             errors: [{
                 row: 1,
@@ -322,15 +333,21 @@ suite("MooseDoc Tests", function () {
                 insertionAfter: "[]\n"
             }],
             edits: [
-                {msg: "wrong indentation", type: "indent",
-                start: [2, 0], end: [2, 1],
-                text: ""},
-                {msg: "wrong indentation", type: "indent",
-                start: [8, 0], end: [8, 1],
-                text: "        "},
-                {msg: "multiple blank lines", type: "blank-lines",
-                start: [11, 0], end: [13, 0],
-                text: ""}
+                {
+                    msg: "wrong indentation", type: "indent",
+                    start: [2, 0], end: [2, 1],
+                    text: ""
+                },
+                {
+                    msg: "wrong indentation", type: "indent",
+                    start: [8, 0], end: [8, 1],
+                    text: "        "
+                },
+                {
+                    msg: "multiple blank lines", type: "blank-lines",
+                    start: [11, 0], end: [13, 0],
+                    text: ""
+                }
             ]
         });
     });

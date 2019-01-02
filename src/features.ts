@@ -2,7 +2,7 @@
 
 import * as vscode from 'vscode';
 
-import { MooseDoc, OutlineItem } from './moose_doc';
+import { MooseDoc, OutlineBlockItem, OutlineParamItem } from './moose_doc';
 import { VSDoc } from './extension';
 
 
@@ -22,12 +22,16 @@ function selectSymbolKind(kind: string, level: number) {
         return vscode.SymbolKind.Null;
     }
 }
-function selectCompleteKind(kind: string) {
+function selectCompleteKind(kind: string, required = false) {
     if (kind === "block") {
         return vscode.CompletionItemKind.Field;
     }
     else if (kind === "parameter") {
-        return vscode.CompletionItemKind.Variable;
+        if (required) {
+            return vscode.CompletionItemKind.Value;
+        } else {
+            return vscode.CompletionItemKind.Variable;
+        }
     }
     else if (kind === "value") {
         return vscode.CompletionItemKind.Value;
@@ -125,7 +129,8 @@ export class DocumentFormattingEditProvider implements vscode.DocumentFormatting
         let vsEdit: vscode.TextEdit;
         this.mooseDoc.setDoc(new VSDoc(document));
 
-        let {edits} = await this.mooseDoc.assessOutline(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+        let { edits } = await this.mooseDoc.assessOutline(
+            vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
 
         for (let edit of edits){
             vsEdit = new vscode.TextEdit(
@@ -155,12 +160,12 @@ export class CompletionItemProvider implements vscode.CompletionItemProvider {
             let completion = new vscode.CompletionItem(mcomp.displayText);
             completion.documentation = mcomp.description;
             if (mcomp.insertText.type === "snippet") {
-                completion.kind = vscode.CompletionItemKind.Snippet;
+                completion.kind = selectCompleteKind(mcomp.kind, mcomp.required); //vscode.CompletionItemKind.Snippet;
                 let snippet = new vscode.SnippetString(mcomp.insertText.value);
                 completion.insertText = snippet;
             }
             else {
-                completion.kind = selectCompleteKind(mcomp.kind);
+                completion.kind = selectCompleteKind(mcomp.kind, mcomp.required);
                 completion.insertText = mcomp.insertText.value;
 
             }
@@ -174,7 +179,7 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     constructor(mooseDoc: MooseDoc) {
         this.mooseDoc = mooseDoc;
     }
-    private createSymbol(item: OutlineItem) {
+    private createSymbol(item: OutlineBlockItem | OutlineParamItem) {
         if (!item.end) {
             return null;
         }
@@ -183,14 +188,19 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
         let params = {
             name: item.name,
             detail: item.description,
-            kind: selectSymbolKind(item.kind, item.level),
             range: range,
-            selectionRange: selectRange
+            selectionRange: selectRange,
         };
-        let symbol = new vscode.DocumentSymbol(params.name, params.detail, params.kind, params.range, params.selectionRange);
+        let kind: vscode.SymbolKind;
+        if ("level" in item) {
+            kind = selectSymbolKind("block", item.level);
+        } else {
+            kind = selectSymbolKind("parameter", 0);
+        }
+        let symbol = new vscode.DocumentSymbol(params.name, params.detail, kind, params.range, params.selectionRange);
         return symbol;
     }
-    private recurseSymbols(item: OutlineItem, symbol: vscode.DocumentSymbol) {
+    private recurseSymbols(item: OutlineBlockItem, symbol: vscode.DocumentSymbol) {
         let children: vscode.DocumentSymbol[] = [];
         for (let childItem of item.children) {
             let childSymbol = this.createSymbol(childItem);
@@ -199,13 +209,26 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
                 children.push(childSymbol);
             }
         }
+        // for (let paramItem of item.parameters) {
+        //     let paramSymbol = this.createSymbol(paramItem);
+        //     if (paramSymbol) {
+        //         children.push(paramSymbol);
+        //     }           
+        // }
         symbol.children = children;
     }
     public async provideDocumentSymbols(document: vscode.TextDocument, token: vscode.CancellationToken): Promise<vscode.DocumentSymbol[]> {
         let symbols: vscode.DocumentSymbol[] = [];
         let symbol: vscode.DocumentSymbol | null;
+        let outline: OutlineBlockItem[];
         this.mooseDoc.setDoc(new VSDoc(document));
-        let { outline } = await this.mooseDoc.assessOutline();
+        try {
+            ({ outline } = await this.mooseDoc.assessOutline());
+        } catch (err) {
+            console.log(err);
+            throw err;
+        }
+
         for (let item of outline) {
             symbol = this.createSymbol(item);
             if (symbol) {
@@ -245,6 +268,10 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
             return;
         }
         let diagnostics: vscode.Diagnostic[] = [];
+        if (!vscode.workspace.getConfiguration('moose').get('diagnostics', false)) {
+            this.diagnosticCollection.set(document.uri, diagnostics);
+            return;
+        }
         let diagnostic: vscode.Diagnostic;
         let severity: vscode.DiagnosticSeverity;
         let message: string;
@@ -259,7 +286,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
             diagnostics.push(diagnostic);
         }
         for (let edit of edits) {
-            severity = vscode.DiagnosticSeverity.Hint;
+            severity = vscode.DiagnosticSeverity.Warning;
             message = edit.msg;
             range = new vscode.Range(
                 new vscode.Position(...edit.start), 

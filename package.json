@@ -55,6 +55,11 @@
           "type": "number",
           "description": "the number of spaces per indentation",
           "default": 4
+        },
+        "moose.diagnostics": {
+          "type": "boolean",
+          "description": "turn on/off file diagnostics",
+          "default": true
         }
       }
     },

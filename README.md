@@ -16,8 +16,8 @@ This extension provides language support and IntelliSense for input files of MOO
 - Code-Folding
 - Outline Tree
 - Hover Definitions
+- [File Diagnostics](#file-diagnostics)
 - [Format Document](#auto-formatting)
-- Identify Syntax Errors
 - Peek/GoTo Source Files
 
 ### Auto Completion Demo
@@ -46,6 +46,17 @@ By default, these files are expected to be in the top-level of the workspace, bu
 
 Autocompletion is triggered either by `Ctrl+Space` or typing `[` or `=`.
 
+## File Diagnostics
+
+Files are diagnosed for syntax and formatting issues, including:
+
+- Duplicate blocks/parameters
+- Rejected block/parameter names
+- Bad block indentations
+- Multiple blank lines
+
+File diagnostics can be turned on/off in the [Settings](#settings).
+
 ## Auto-Formatting
 
 Selecting the `Format Document` option will format the document by:
@@ -64,6 +75,7 @@ Settings are configured in `Preferences -> Settings`:
 | `moose.syntax.yaml` | the path of the YAML file                     |
 | `moose.syntax.json` | the path of the JSON file                     |
 | `moose.tab.space`   | the number of spaces per indentation          |
+| `moose.diagnostics` | turn on/off file diagnostics                  |
 | `moose.log.debug`   | log debug and warning messages to the console |
 
 ![](images/settings.png)
