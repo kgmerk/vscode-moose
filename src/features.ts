@@ -101,7 +101,7 @@ export class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEdit
         let row = position.line;
 
         for (let edit of edits){
-            if (row >= edit.start[0] && row <= edit.end[0] && edit.msg === "wrong indentation"){
+            if (row >= edit.start[0] && row <= edit.end[0] && edit.type === "indent"){
                 vsEdit = new vscode.TextEdit(
                     new vscode.Range(
                         new vscode.Position(...edit.start), 

@@ -322,13 +322,13 @@ suite("MooseDoc Tests", function () {
                 insertionAfter: "[]\n"
             }],
             edits: [
-                {msg: "wrong indentation",
+                {msg: "wrong indentation", type: "indent",
                 start: [2, 0], end: [2, 1],
                 text: ""},
-                {msg: "wrong indentation",
+                {msg: "wrong indentation", type: "indent",
                 start: [8, 0], end: [8, 1],
                 text: "        "},
-                {msg: "multiple blank lines",
+                {msg: "multiple blank lines", type: "blank-lines",
                 start: [11, 0], end: [13, 0],
                 text: ""}
             ]

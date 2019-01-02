@@ -71,6 +71,7 @@ export interface SyntaxError {
     insertionAfter?: string;
 }
 export interface textEdit {
+    type: "indent" | "blank-lines"; 
     start: [number, number];
     end: [number, number];
     text: string;
@@ -818,9 +819,9 @@ export class MooseDoc {
 
             // check all lines are at correct indentation level
             let firstChar = line.search(/[^\s]/);
-            // console.log(row, firstChar, currLevel, currLevel*indentLength);
             if (firstChar >= 0 && firstChar !== indentLevel * indentLength) {
                 textEdits.push({
+                    type: "indent",
                     start: [row, 0],
                     end: [row, firstChar],
                     text: " ".repeat(indentLevel * indentLength),
@@ -853,6 +854,7 @@ export class MooseDoc {
         else {
             if (emptyLines.length > 1) {
                 textEdits.push({
+                    type: "blank-lines",
                     start: [emptyLines[0], 0],
                     end: [row - 1, line === null ? 0 : line.length],
                     text: "",
