@@ -109,7 +109,12 @@ Thanks to Daniel Schwen for supplying code for [MOOSE autocompletion in ATOM.io]
 
 ## VS Code Extension Development
 
-To create extension:
+Some useful links:
+
+- [Node.js in VS Code](https://code.visualstudio.com/docs/nodejs/nodejs-tutorial)
+- [Extension API](https://code.visualstudio.com/api)
+
+To create an extension:
 
     >>> yo code
 
