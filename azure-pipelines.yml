@@ -101,7 +101,7 @@ jobs:
     displayName: 'Run Tests'
     inputs:
       command: custom
-      verbose: true
+      verbose: false
       customCommand: 'run mocha'
 - job: Mocha_Linux
   pool:
@@ -126,7 +126,7 @@ jobs:
     displayName: 'Run Tests'
     inputs:
       command: custom
-      verbose: true
+      verbose: false
       customCommand: 'run mocha'
 - job: Mocha_macOS
   pool:
@@ -151,5 +151,5 @@ jobs:
     displayName: 'Run Tests'
     inputs:
       command: custom
-      verbose: true
+      verbose: false
       customCommand: 'run mocha'
