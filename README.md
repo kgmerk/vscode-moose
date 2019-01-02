@@ -113,6 +113,8 @@ Some useful links:
 
 - [Node.js in VS Code](https://code.visualstudio.com/docs/nodejs/nodejs-tutorial)
 - [Extension API](https://code.visualstudio.com/api)
+- [Variables Reference](https://code.visualstudio.com/docs/editor/variables-reference)
+- [Azure Pipelines](https://docs.microsoft.com/en-us/azure/devops/pipelines/languages/javascript?view=vsts&tabs=yaml)
 
 To create an extension:
 
