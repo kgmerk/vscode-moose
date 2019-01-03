@@ -5,71 +5,88 @@
 
 This extension provides language support and IntelliSense for input files of MOOSE (Multiphysics Object Oriented Simulation Environment) applications.
 
-![Example Workspace](images/example_workspace.png)
-
-Github Repo: https://github.com/chrisjsewell/vscode-moose
+<aside class="notice">
+<b>Note</b>: A major API change occurred in v0.7.0
+</aside>
 
 ## Features
 
 - Syntax Highlighting
-- Input Block Folding
-- Input Blocks Outline View
-- Hover/Peek/GoTo Definitions of MOOSE Objects
-- Autocomplete block names and MOOSE Objects
-- Find/Peek All References to Variables
-- Main/Sub-Block snippets
+- [Autocompletion](#auto-completion)
+- Code-Folding
+- Outline Tree
+- Hover Definitions
+- [File Diagnostics](#file-diagnostics)
+- [Format Document](#auto-formatting)
+- Peek/GoTo Source Files
 
-### IntelliSense
+### Auto Completion Demo
 
-VSCode for MOOSE builds a mapping of MOOSE object names to their defining source file (<NAME>.C) within the workspace.
+![Auto-completion](images/auto-complete.gif)
 
-Note that multiple folders can be added to a workspace by: `File -> Add Folder To Workspace...`.
-Therefore, in order to create mappings for core MOOSE objects, the main MOOSE library folder should be added to the workspace.
+### Introspection Demo
 
-Rules for inclusion/exclusion of file and folder regexes are user controllable *via* [Settings](#settings).
+![Introspection](images/introspection.gif)
 
-### Hover/Peek/GoTo Definitions
+## Loading MOOSE Syntax Data
 
-![GoTo/Peek Definitions](images/peek_definitions.gif)
+MOOSE object and hierarchy data is read primarily from the YAML file you can create from your MOOSE application:
 
-The C/C++ extension is required for syntax highlighting of the C file.
+    >> ./moose-opt --yaml > syntax.yaml
 
-Hovering over MOOSE objects attempts to retrieve the text residing in `addClassDescription`.
+Additional data (descriptions and source file paths) will also be read, if available, from the JSON output:
 
-### Autocomplete
+    >> ./moose-opt --json > syntax.json
 
-Autocompletion triggers:
+These can also be created within VS Code *via* selecting '`MOOSE: Create Syntax Files`' in the Command Palette (`Cmnd+Shift+P`), or downloading example files from the [Extension Repository](https://github.com/chrisjsewell/vscode-moose/tree/master/src/test).
 
-- for Blocks is triggered after typing `[`,
-- for Moose Objects is triggered after typing `type =`,
+By default, these files are expected to be in the top-level of the workspace, but their paths can be altered in the [Settings](#settings).
 
-![Autocomplete](images/autocomplete.gif)
+## Auto-Completion
 
-### Find/Peek All References
+Autocompletion is triggered either by `Ctrl+Space` or typing `[` or `=`.
 
-Looks for all references on the right side of `=` assignments,
-and initialisations (as sub-blocks) in Variables/AuxVariables.
+## File Diagnostics
 
-![Find/Peek All References](images/find_all_references.gif)
+Files are diagnosed for syntax and formatting issues, including:
+
+- Unclosed blocks
+- Duplicate blocks/parameters
+- Rejected block/parameter names
+- Bad block indentations
+- Multiple blank lines
+
+File diagnostics can be turned on/off in the [Settings](#settings).
+
+## Auto-Formatting
+
+Selecting the `Format Document` option will format the document by:
+
+- Indenting the sections according to their level (the number of space per indentation can be controlled in the [Settings](#settings)).
+- Removing multiple blank lines.
+
+Format as you type can also be set in the [general settings](https://code.visualstudio.com/docs/getstarted/settings) (`editor.formatOnType: true`).
 
 ## Settings
 
 Settings are configured in `Preferences -> Settings`:
 
-| Name                         | Description                                                                                               |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------|
-| `moose.exclude.workspaces`   | Specifies the workspace regexes to ignore when searching for MOOSE objects                                |
-| `moose.exclude.relpaths`     | Specifies the path regexes (relative to workspaces) to ignore when searching for MOOSE objects            |
-| `moose.include.modules`      | Specifies the moose module folders to search in for MOOSE Objects (`**/modules/<MODULE>/src/<TYPE>/*.C`)  |
-| `moose.include.types`        | Specifies the src subfolders to search in for MOOSE Objects (`**/framework/src/<TYPE>/*.C`)               |
-| `moose.include.relpaths`     | Specifies additional path regexes (relative to workspaces) to search for MOOSE Objects                    |
-| `moose.object.alias`         | Name aliases of objects, i.e. set by registerMooseObjectAliased                                           |
+| Name                | Description                                   |
+| ------------------- | ----------------------------------------------|
+| `moose.syntax.yaml` | the path of the YAML file                     |
+| `moose.syntax.json` | the path of the JSON file                     |
+| `moose.tab.space`   | the number of spaces per indentation          |
+| `moose.diagnostics` | turn on/off file diagnostics                  |
+| `moose.log.debug`   | log debug and warning messages to the console |
+
+![](images/settings.png)
 
 ## Commands
 
 Accessed with `Cmnd+Shift+P`:
 
 - `MOOSE: Reset MOOSE Objects Database`
+- `MOOSE: Create Syntax Files`
 
 ## How to install from Marketplace
 
@@ -82,41 +99,24 @@ This extension is hosted at Visual Studio Marketplace
 
 ## Release Notes
 
-### 0.0.1
+### 0.7.0
 
-Initial release, including syntax colouring, code folding and outline view
+Major API change (using syntax.yaml)
 
-### 0.0.2
+## Acknowledgements
 
-Fixed bug for Sub-Block names containing _
-
-### 0.1.0
-
-Added Autocomplete block names, Find/Peek All References to Variables, and Main/Sub-Block snippets
-
-### 0.2.0
-
-Added syntax colouring of moose objects and 'Go To'/'Peek' Definitions
-
-### 0.3.0
-
-Added MOOSE object autocompletion
-
-### 0.4.0
-
-Added MOOSE object hovering
-
-### 0.5.0
-
-Added MOOSE descriptions in autocomplete and auto-update of MOOSE objects
-
-### 0.6.0
-
-Renamed settings keys (and added ignore workspace option)
+Thanks to Daniel Schwen for supplying code for [MOOSE autocompletion in ATOM.io](https://github.com/dschwen/autocomplete-moose)
 
 ## VS Code Extension Development
 
-To create extension:
+Some useful links:
+
+- [Node.js in VS Code](https://code.visualstudio.com/docs/nodejs/nodejs-tutorial)
+- [Extension API](https://code.visualstudio.com/api)
+- [Variables Reference](https://code.visualstudio.com/docs/editor/variables-reference)
+- [Azure Pipelines](https://docs.microsoft.com/en-us/azure/devops/pipelines/languages/javascript?view=vsts&tabs=yaml) and [Example Repo](https://github.com/MicrosoftDocs/pipelines-javascript)
+
+To create an extension:
 
     >>> yo code
 

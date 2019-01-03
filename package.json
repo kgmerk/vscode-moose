@@ -1,6 +1,6 @@
 {
   "name": "moose",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "displayName": "MOOSE for VSCode",
   "title": "MOOSE for VSCode",
   "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
@@ -36,89 +36,30 @@
       "type": "object",
       "title": "Moose configuration",
       "properties": {
-        "moose.exclude.workspaces": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Specifies the workspace regexes to ignore when searching for MOOSE objects"
+        "moose.syntax.yaml": {
+          "type": "string",
+          "description": "specifies path of syntax.yaml file",
+          "default": "${workspaceFolder}/syntax.yaml"
         },
-        "moose.exclude.relpaths": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "**/test/**/*",
-            "**/examples/**/*",
-            "**/tutorials/**/*",
-            "**/.git/**/*",
-            "**/node_modules/**/*",
-            "**/libmesh/**/*",
-            "**/main.C"
-          ],
-          "description": "Specifies the path regexes (relative to workspaces) to ignore when searching for MOOSE objects"
+        "moose.syntax.json": {
+          "type": "string",
+          "description": "specifies path of syntax.json file",
+          "default": "${workspaceFolder}/syntax.json"
         },
-        "moose.include.modules": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "phase_field",
-            "tensor_mechanics"
-          ],
-          "description": "Specifies the MOOSE module folders to search in for MOOSE Objects (**/modules/<MODULE>/src/<TYPE>/*.C)"
+        "moose.log.debug": {
+          "type": "boolean",
+          "description": "whether to log debug and warning messages to the console",
+          "default": false
         },
-        "moose.include.types": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "auxkernels",
-            "kernels",
-            "materials",
-            "postprocessors",
-            "vectorpostprocessors",
-            "bcs",
-            "ics",
-            "mesh",
-            "timesteppers",
-            "functions",
-            "preconditioners",
-            "executioners"
-          ],
-          "description": "Specifies the src subfolders to search in for MOOSE Objects (**/framework/src/<TYPE>/*.C)"
+        "moose.tab.spaces": {
+          "type": "number",
+          "description": "the number of spaces per indentation",
+          "default": 4
         },
-        "moose.include.relpaths": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "src/**/*.C"
-          ],
-          "description": "Specifies additional path regexes (relative to workspaces) to search for MOOSE objects"
-        },
-        "moose.object.alias": {
-          "type": "object",
-          "patternProperties": {
-            "*": {
-              "type": "string"
-            }
-          },
-          "default": {
-            "MooseParsedFunction": "ParsedFunction",
-            "MooseParsedGradFunction": "ParsedGradFunction",
-            "MooseParsedVectorFunction": "ParsedVectorFunction",
-            "SingleMatrixPreconditioner": "SMP",
-            "FieldSplitPreconditioner": "FSP",
-            "FiniteDifferencePreconditioner": "FDP",
-            "PhysicsBasedPreconditioner": "PBP"
-          },
-          "description": "Name aliases of objects, i.e. set by registerMooseObjectAliased"
+        "moose.diagnostics": {
+          "type": "boolean",
+          "description": "turn on/off file diagnostics",
+          "default": true
         }
       }
     },
@@ -126,6 +67,10 @@
       {
         "command": "moose.ResetMooseObjects",
         "title": "MOOSE: Reset MOOSE Objects Database"
+      },
+      {
+        "command": "moose.createFiles",
+        "title": "MOOSE: Create MOOSE syntax files"
       }
     ],
     "languages": [
@@ -160,23 +105,29 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "postinstall": "node ./node_modules/vscode/bin/install",
-    "test": "npm run compile && node ./node_modules/vscode/bin/test"
+    "test": "npm run compile && node ./node_modules/vscode/bin/test",
+    "mocha": "nyc ./node_modules/mocha/bin/_mocha -u tdd --timeout 999999 --colors out/test/",
+    "azure": "nyc --reporter=cobertura --reporter=html ./node_modules/mocha/bin/_mocha -u tdd --timeout 999999 --colors out/test/ --reporter mocha-junit-reporter --reporter-options mochaFile=./TEST-RESULTS.xml"
   },
   "devDependencies": {
-    "@types/glob-to-regexp": "^0.4.0",
-    "@types/mocha": "^2.2.42",
-    "@types/chai": "^4.1.7",
-    "@types/chai-as-promised": "^7.1.0",
-    "@types/node": "^8.10.25",
-    "@types/js-yaml": "3.11.4",
-    "@types/path-parse": "^1.0.6",
+    "nyc": "^13.1.0",
+    "mocha-junit-reporter": "^1.18.0",
+    "chai": "^4.2.0",
+    "chai-as-promised": "^7.1.1",
     "tslint": "^5.8.0",
     "typescript": "^3.1.4",
-    "vscode": "^1.1.25"
+    "vscode": "^1.1.25",
+    "@types/node": "^8.10.25",
+    "@types/glob-to-regexp": "^0.4.0",
+    "@types/js-yaml": "3.11.4",
+    "@types/path-parse": "^1.0.6",
+    "@types/mocha": "^2.2.42",
+    "@types/chai": "^4.1.7",
+    "@types/chai-as-promised": "^7.1.0"
   },
   "dependencies": {
     "glob-to-regexp": "^0.4.0",
-    "path-parse": "^1.0.6",
-    "js-yaml": "^3.11.4"
+    "js-yaml": "^3.11.4",
+    "path-parse": "^1.0.6"
   }
 }
