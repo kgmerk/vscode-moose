@@ -152,4 +152,14 @@ jobs:
     inputs:
       command: custom
       verbose: false
-      customCommand: 'run mocha'
+      customCommand: 'run azure'
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFiles: '**/TEST-RESULTS.xml'
+      testRunTitle: 'Test results for Unit Tests'
+    condition: succeededOrFailed()
+  - task: PublishCodeCoverageResults@1
+    inputs: 
+      codeCoverageTool: Cobertura
+      summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/*coverage.xml'
+      reportDirectory: '$(System.DefaultWorkingDirectory)/**/coverage'
