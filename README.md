@@ -16,7 +16,8 @@ This extension provides language support and IntelliSense for input files of MOO
 - Hover Definitions
 - [File Diagnostics](#file-diagnostics)
 - [Format Document](#auto-formatting)
-- Peek/GoTo Source Files
+- Peek/GoTo Referenced Variable/Material Definitions
+- Peek/GoTo C++ Source Files
 
 ### Auto Completion Demo
 
@@ -108,6 +109,14 @@ Fixed some bugs:
 - ignore commented out blocks
 - include active/inactive parameters at block level
 - underline TODO comments
+
+### 0.8.0
+
+- added variables and materials names to autocompletion and hover functionality
+- added variable / material definition locations to DefinitionProvider
+- added `cpp_type` to description in HoverProvider
+- fixed bug when parameter is defined before any blocks
+- fixed bug when parameters are defined in GlobalParams block
 
 ## Acknowledgements
 
