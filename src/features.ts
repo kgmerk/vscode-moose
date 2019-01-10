@@ -55,9 +55,12 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
         this.mooseDoc.setDoc(new VSDoc(document));
         let pos = { row: position.line, column: position.character };
         let match = await this.mooseDoc.findCurrentNode(pos);
-        if (match !== null && "file" in match.node) {
+        if (match !== null && "defPosition" in match.node) {
+            return new vscode.Location(document.uri,
+                new vscode.Position(match.node.defPosition.row, match.node.defPosition.column));
+        } else if (match !== null && "file" in match.node) {
             if (match.node.file !== undefined) {
-                return new vscode.Location(vscode.Uri.file(match.node.file), position);
+                return new vscode.Location(vscode.Uri.file(match.node.file), new vscode.Position(0, 0));
             }
         }
         throw Error('no definition available');
@@ -77,9 +80,14 @@ export class HoverProvider implements vscode.HoverProvider {
             let { node, path, range } = match;
             let mkdown = new vscode.MarkdownString();
             let descript = "**" + path.join("/") + "**\n\n" + node.description;
+            if ("cpp_type" in node) {
+                if (node.cpp_type) {
+                    descript += "\nType: " + node.cpp_type + "\n";
+                }
+            }
             if ("options" in node) {
                 if (node.options) {
-                    descript += "\n**Options**: " + node.options.split(" ").join(", ");
+                    descript += "\nOptions: " + node.options.split(" ").join(", ");
                 }
             }
             mkdown.appendMarkdown(descript);

@@ -143,6 +143,60 @@ suite("MooseDoc Tests", function () {
             ['Kernels', 'akernel', 'AllenCahn', 'f_name']);
     });
 
+    test("findCurrentNode; value which is reference to variable", function () {
+        doc.text = `
+[Variables]
+    [./xy_z]
+    [../]
+[]
+[Kernels]
+    [./akernel]
+        type = AllenCahn
+        variable = xy_z
+    [../]
+[]
+        `;
+        let cursor = { row: 8, column: 22 };
+        // mdoc.findCurrentNode(cursor).then(value => {
+        //     if (value !== null) {
+        //         console.log(value.name);
+        //     } else {
+        //         console.log("node not found");
+        //     }
+        // });
+        return expect(mdoc.findCurrentNode(cursor)
+        ).to.eventually.be.an('object').with.property('path').eql(
+            ['Variables', 'xy_z']);
+    });
+
+    test("findCurrentNode; value which is reference to material", function () {
+        doc.text = `
+[Materials]
+    [./mat2]
+        type = DerivativeParsedMaterial
+        f_name = fmat
+    [../]
+[]
+[Kernels]
+    [./akernel]
+        type = AllenCahn
+        f_name = fmat
+    [../]
+[]
+        `;
+        let cursor = { row: 10, column: 21 };
+        // mdoc.findCurrentNode(cursor).then(value => {
+        //     if (value !== null) {
+        //         console.log(value.name);
+        //     } else {
+        //         console.log("node not found");
+        //     }
+        // });
+        return expect(mdoc.findCurrentNode(cursor)
+        ).to.eventually.be.an('object').with.property('path').eql(
+            ['Materials', 'mat2', 'DerivativeParsedMaterial', 'fmat']);
+    });
+
     test("Completion; block", function () {
         doc.text = "[]";
         let cursor = { row: 0, column: 1 };
@@ -213,9 +267,9 @@ suite("MooseDoc Tests", function () {
         });
     });
 
-    test("Completion; parameter value", function () {
+    test("Completion; parameter value with fixed options", function () {
         doc.text = `
-[BCs]
+[Kernels]
     [./akernel]
         type = ACBarrierFunction
         use_displaced_mesh = 
@@ -245,6 +299,110 @@ suite("MooseDoc Tests", function () {
                     value: "false"
                 },
                 replacementPrefix: ""
+            }
+        ]);
+    });
+
+    test("Completion; parameter value whose value is from Variables", function () {
+        doc.text = `
+[Variables]
+    [./abc]
+    [../]
+[]
+[Materials]
+    [./h_eta]
+        type = SwitchingFunctionMaterial
+        eta = 
+    [../]
+[]
+        `;
+        let cursor = { row: 8, column: 15 };
+        // mdoc.findCompletions(cursor).then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.findCompletions(cursor)
+        ).to.eventually.eql([
+            {
+                kind: "block",
+                displayText: "abc",
+                insertText: {
+                    type: "text",
+                    value: "abc"
+                },
+                replacementPrefix: "",
+                description: ""
+            }
+        ]);
+    });
+
+    test("Completion; parameter value whose value is from Materials", function () {
+        doc.text = `
+[Materials]
+    [./mat1] # a material with a defined name
+        type = DerivativeParsedMaterial
+        f_name = dpm
+    [../]
+    [./g_eta] # a material with a default name
+        type = BarrierFunctionMaterial
+    [../]
+    [./constants] # constant properties
+      type = GenericConstantMaterial
+      prop_names  = 'M   L'
+      prop_values = '0.7 0.7'
+    [../]
+[]
+[Kernels]
+    [./ckernel]
+        type = SplitCHWRes
+        mob_name = 
+    [../]
+[]
+        `;
+        let cursor = { row: 18, column: 20 };
+        mdoc.findCompletions(cursor).then(value => {
+            console.log(value);
+        });
+        return expect(mdoc.findCompletions(cursor)
+        ).to.eventually.eql([
+        {
+              "description": "Materials/mat1/DerivativeParsedMaterial",
+              "displayText": "dpm",
+              "insertText": {
+                "type": "text",
+                "value": "dpm"
+              },
+              "kind": "value",
+              "replacementPrefix": ""
+            },
+            {
+              "description": "Materials/g_eta/BarrierFunctionMaterial/g",
+              "displayText": "g",
+              "insertText": {
+                "type": "text",
+                "value": "g"
+              },
+              "kind": "value",
+              "replacementPrefix": ""
+            },
+            {
+              "description": "Materials/constants/GenericConstantMaterial",
+              "displayText": "M",
+              "insertText": {
+                "type": "text",
+                "value": "M"
+              },
+              "kind": "value",
+              "replacementPrefix": ""
+            },
+            {
+              "description": "Materials/constants/GenericConstantMaterial",
+              "displayText": "L",
+              "insertText": {
+                "type": "text",
+                "value": "L"
+              },
+              "kind": "value",
+              "replacementPrefix": ""
             }
         ]);
     });

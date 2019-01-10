@@ -83,6 +83,14 @@ export interface textEdit {
     msg: string;
 }
 
+/** an interface to describe a value in the document */
+export interface ValueNode {
+    description: string;
+    // paramNode: moosedb.ParamNode;
+    file?: string; // path to the definition (if undefined then in same document as value)
+    defPosition: Position; // position of the definition
+}
+
 function __guard__(value: RegExpMatchArray | null,
     transform: (regarray: RegExpMatchArray) => string) {
     return typeof value !== 'undefined' && value !== null ? transform(value) : undefined;
@@ -171,6 +179,97 @@ export class MooseDoc {
 
     }
 
+    private async findValueNode(word: string, paramName: string, paramsList: moosedb.ParamNode[]) {
+
+        let node: ValueNode | null = null;
+        let configPath: string[] | null = null;
+
+        for (let param of paramsList) {
+            if (param.name === paramName) {
+
+                let hasType = (type: string, atype: string | null = null) => {
+                    return param.cpp_type === type || this.isVectorOf(param.cpp_type, atype ? atype : type);
+                };
+
+                // if (hasType('bool')) {
+                //     // no node
+                // } else if (hasType('MooseEnum', 'MultiMooseEnum')) {
+                //     // no node
+                // } else if (hasType('OutputName')) {
+                //     // no node
+                // }
+
+                let blockNames: string[] | null = null;
+                if (hasType('NonlinearVariableName')) {
+                    blockNames = ['Variables'];
+                } else if (hasType('AuxVariableName')) {
+                    blockNames = ['AuxVariables'];
+                } else if (hasType('VariableName')) {
+                    blockNames = ['Variables', 'AuxVariables'];
+                } else if (hasType('FunctionName')) {
+                    blockNames = ['Functions'];
+                } else if (hasType('PostprocessorName')) {
+                    blockNames = ['Postprocessors'];
+                } else if (hasType('UserObjectName')) {
+                    blockNames = ['Postprocessors', 'UserObjects'];
+                } else if (hasType('VectorPostprocessorName')) {
+                    blockNames = ['VectorPostprocessors'];
+                }  
+                
+                if (blockNames) {
+                    for (let blockName of blockNames) {
+                        for (let {name, row} of this.yieldSubBlockList(blockName, [])) {
+                            if (name === word) {
+                                // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
+                                configPath = [blockName, name];
+                                node = {
+                                    description: "Referenced " + blockName.slice(0, blockName.length-1),
+                                    defPosition: { row: row, column: 0 }
+                                };
+                                break;
+                            }
+                        }
+                        if (node) {
+                            break;
+                        }
+                    }
+                } else if (hasType('MaterialPropertyName')) {
+                    for (let { name, position, block, type } of this.yieldMaterialNameList()) {
+                        if (name === word) {
+                            configPath = ["Materials", block, type, name];
+                            node = {
+                                description: "Referenced Material",
+                                defPosition: position
+                            };                                
+                            return { pnode: node, path: configPath };
+                        } else if (name === null) {
+                            // we want to try to find a default f_name
+                            let paramList = await this.syntaxdb.fetchParameterList(["Materials", type]);
+                            for (let mparam of paramList) {
+                                if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default === word) {
+                                    configPath = ["Materials", block, type, mparam.default];
+                                    node = {
+                                        description: "Referenced Material",
+                                        defPosition: position
+                                    }; 
+                                    return { pnode: node, path: configPath };
+                                }
+                            }
+                        }
+                    }
+                } else if (hasType('FileName') || hasType('MeshFileName')) {
+                    // let filePath = ppath.dirname(this.getDoc().getPath());
+                    // TODO filename ValueNodes (what configpath?)
+                    // need to convert relative paths to absolute path
+                }
+                return { pnode: node, path: configPath };
+            }
+            
+        }
+
+        return { pnode: node, path: configPath };
+    }
+
     /** find node for a cursor position, and the path to it
     * 
     * @param pos position of cursor
@@ -179,6 +278,8 @@ export class MooseDoc {
     public async findCurrentNode(pos: Position, regex: string = "_0-9a-zA-Z") {
 
         let match: null | moosedb.nodeMatch = null;
+        let node: moosedb.SyntaxNode | moosedb.ParamNode | ValueNode | null = null
+        let rmatch: RegExpExecArray | null;
 
         let line = this.getDoc().getTextForRow(pos.row);
         let wordMatch = MooseDoc.getWordAt(line, pos.column, regex);
@@ -193,10 +294,18 @@ export class MooseDoc {
             // block
             configPath.push(word);
             match = await this.syntaxdb.matchSyntaxNode(configPath);
+            if (!match) {
+                return null;
+            }
+            node = match.node;
         } else if (line.slice(start - 3, end + 1) === "[./" + word + "]") {
             //sub-block
             configPath.push(word);
             match = await this.syntaxdb.matchSyntaxNode(configPath);
+            if (!match) {
+                return null;
+            }
+            node = match.node;
         } else if (/\s*type\s*=\s*/.test(line.slice(0, start - 1))) {
             // type parameter
             match = await this.syntaxdb.matchSyntaxNode(configPath);
@@ -205,6 +314,10 @@ export class MooseDoc {
                 match = await this.syntaxdb.matchSyntaxNode(typedPath);
                 configPath.push(word);
             }
+            if (!match) {
+                return null;
+            }
+            node = match.node;
         } else if (/\s*=.*/.test(line.slice(end + 1))) {
             // parameter name
             let params = await this.syntaxdb.fetchParameterList(configPath, explicitType);
@@ -214,15 +327,29 @@ export class MooseDoc {
                         configPath.push(explicitType);
                     }
                     configPath.push(param.name);
-                    return { node: param, path: configPath, range: [start, end] };
+                    node = param;
                 }
+            }
+        } else if (!!(rmatch = /^\s*([^\s#=\]]+)\s*=.*/.exec(line))) {
+            // value of parameter
+            let paramName = rmatch[1];
+            let paramsList = await this.syntaxdb.fetchParameterList(configPath, explicitType);
+            let { pnode, path } = await this.findValueNode(word, paramName, paramsList);
+            if (pnode && path) {
+                configPath = path;
+                node = pnode;
             }
         }
 
-        if (match === null) {
+        if (node === null) {
             return null;
         }
-        return { node: match.node, path: configPath, range: [start, end] };
+
+        return {
+            node: node,
+            path: configPath,
+            range: [start, end]
+        };
     }
 
     /** find available completions for a cursor position
@@ -257,7 +384,7 @@ export class MooseDoc {
             let hasSpace = !!match[3];
             for (param of Array.from(await this.syntaxdb.fetchParameterList(configPath, explicitType))) {
                 if (param.name === paramName) {
-                    completions = this.computeValueCompletion(param, isQuoted, hasSpace);
+                    completions = await this.computeValueCompletion(param, isQuoted, hasSpace);
                     break;
                 }
             }
@@ -467,35 +594,36 @@ export class MooseDoc {
         return (match !== null) && (match[2] === type);
     }
 
-    /** gather sub-blocks of a given top block 
+    /** yield sub-blocks of a given top block 
      *  
      * @param blockName the name of the top block (e.g. Functions, PostProcessors)
-     * @param propertyNames include named properties of the subblock
+     * @param propertyNames named properties of the subblock to return
      */
-    private fetchSubBlockList(blockName: string, propertyNames: string[]) {
-        let i = 0;
+    private * yieldSubBlockList(blockName: string, propertyNames: string[]) {
+        let row = 0;
         let level = 0;
-        let subBlockList: { name: string, properties: { [index: string]: string } }[] = [];
-        var subBlock: {
+        // let subBlockList: { name: string, properties: { [index: string]: string } }[] = [];
+        let subBlock: {
             name: string,
-            properties: { [index: string]: string }
-        } = { name: '', properties: {} };
+            properties: { [index: string]: string },
+            row: number
+        } = { name: '', properties: {}, row: 0 };
         let filterList = Array.from(propertyNames).map(property => ({ name: property, re: new RegExp(`^\\s*${property}\\s*=\\s*([^\\s#=\\]]+)$`) }));
 
         let nlines = this.getDoc().getLineCount();
 
         // find start of selected block
-        while (i < nlines && this.getDoc().getTextForRow(i).indexOf(`[${blockName}]`) === -1) {
-            i++;
+        while (row < nlines && this.getDoc().getTextForRow(row).indexOf(`[${blockName}]`) === -1) {
+            row++;
         }
 
         // parse contents of subBlock block
         while (true) {
 
-            if (i >= nlines) {
+            if (row >= nlines) {
                 break;
             }
-            let line = this.getDoc().getTextForRow(i);
+            let line = this.getDoc().getTextForRow(row);
             if (blockCloseTop.test(line)) {
                 break;
             }
@@ -504,18 +632,19 @@ export class MooseDoc {
                 if (level === 0) {
                     let blockopen = blockOpenOneLevel.exec(line);
                     if (blockopen !== null) {
-                        subBlock = { name: blockopen[1], properties: {} };
+                        subBlock = { name: blockopen[1], properties: {}, row: row };
                     }
                 }
                 level++;
             } else if (blockCloseOneLevel.test(line)) {
                 level--;
                 if (level === 0) {
-                    subBlockList.push(subBlock);
+                    yield subBlock;
+                    // subBlockList.push(subBlock);
                 }
             } else if (level === 1) {
                 for (let filter of Array.from(filterList)) {
-                    var match;
+                    let match;
                     if (match = filter.re.exec(line)) {
                         subBlock.properties[filter.name] = match[1];
                         break;
@@ -523,10 +652,115 @@ export class MooseDoc {
                 }
             }
 
-            i++;
+            row++;
         }
 
-        return subBlockList;
+        // return subBlockList;
+    }
+
+    /** yield names of material in the Materials block (if present)
+     *  
+     * @param blockName the name of the top block (e.g. Functions, PostProcessors)
+     * @param propertyNames named properties of the subblock to return
+     */
+    private * yieldMaterialNameList() {
+        let blockName = "Materials";
+        let row = 0;
+        let level = 0;
+        let subBlockName: string | null = null;
+        let subBlockType: string | null = null;
+        let matNames: {name: string | null, block: string, position: Position, type: string}[] = [];
+        let regExec: RegExpExecArray | null;
+        // let filterList = Array.from(propertyNames).map(property => ({ name: property, re: new RegExp(`^\\s*${property}\\s*=\\s*([^\\s#=\\]]+)$`) }));
+
+        let nlines = this.getDoc().getLineCount();
+
+        // find start of selected block
+        while (row < nlines && this.getDoc().getTextForRow(row).indexOf(`[${blockName}]`) === -1) {
+            row++;
+        }
+        let subblockRow = row;
+
+        // parse contents of subBlock block
+        while (true) {
+
+            if (row >= nlines) {
+                break;
+            }
+            let line = this.getDoc().getTextForRow(row);
+            if (blockCloseTop.test(line)) {
+                break;
+            }
+
+            if (blockOpenOneLevel.test(line)) {
+                if (level === 0) {
+                    let blockOpen = blockOpenOneLevel.exec(line);
+                    if (blockOpen !== null) {
+                        subBlockName = blockOpen[1];
+                    }
+                    subblockRow = row;
+                }
+                level++;
+            } else if (blockCloseOneLevel.test(line)) {
+                level--;
+                //NB: we scan the whole block first, to find the type, before yielding names
+                if (level === 0 && matNames.length === 0 && subBlockName && subBlockType) {
+                    // we want to try to find a default f_name or function_name;
+                    // let match = this.syntaxdb.fetchParameterList(["Materials", subBlockType])
+                    // However, calling await in generators is only supported natively in Node v10+
+                    // so for now we defer this to the calling function
+                    yield {
+                        name: null,
+                        block: subBlockName,
+                        type: subBlockType,
+                        position: { row: subblockRow, column: 0 } as Position
+                    }; 
+                }
+                if (level === 0 && subBlockType !== null) { 
+                    for (let matname of matNames) {
+                        matname.type = subBlockType
+                        yield matname;
+                    }
+                }
+                if (level === 0) {
+                    subBlockName = null;
+                    subBlockType = null;
+                    matNames = [];
+                }
+            } else if (level === 1 && subBlockName !== null) {
+                // find type
+                if (regExec = blockType.exec(line)) {
+                    subBlockType = regExec[1];
+                } else if (regExec = /^\s*(f_name|h_name|function_name)\s*=\s*[\'\"]*([^#\s\'\"]+)/.exec(line)) {
+                    // find f_name or function_name (used for most materials)
+                    let f_name = regExec[2];
+                    matNames = [{
+                        name: f_name,
+                        block: subBlockName,
+                        type: "",
+                        position: { row: row, column: line.search(RegExp("[\\s\\\'\\\"]"+f_name+"[\\s\\\'\\\"]")) + 1 } as Position
+                    }];
+                } else if (regExec = /^\s*prop_names\s*=\s*[\'\"]*([^#\'\"]+)/.exec(line)) {
+                    // find prop_names (used for constants)
+                    let p_names = regExec[1].split(/\s+/).filter(Boolean); // filter removes zero-length strings
+                    // TODO check prop_names can't overflow on to new line 
+                    matNames = [];
+                    for (let p_name of p_names) {
+                        matNames.push({
+                            name: p_name,
+                            block: subBlockName,
+                            type: "",
+                            position: { row: row, column: line.search(RegExp("[\\s\\\'\\\"]"+p_name+"[\\s\\\'\\\"]")) + 1 } as Position
+                        });                        
+                    }
+                }
+                
+                // TODO is there an obvious way to work out which parameter defines the materials names?
+            }
+
+            row++;
+        }
+
     }
 
     /** generic completion list builder for subblock names
@@ -537,7 +771,7 @@ export class MooseDoc {
     private computeSubBlockNameCompletion(blockNames: string[], propertyNames: string[]) {
         let completions: Completion[] = [];
         for (let block of Array.from(blockNames)) {
-            for (let { name, properties } of Array.from(this.fetchSubBlockList(block, propertyNames))) {
+            for (let { name, properties } of Array.from(this.yieldSubBlockList(block, propertyNames))) {
                 let doc = [];
                 for (let propertyName of Array.from(propertyNames)) {
                     if (propertyName in properties) {
@@ -591,16 +825,16 @@ export class MooseDoc {
      * @param isQuoted 
      * @param hasSpace 
      */
-    private computeValueCompletion(param: moosedb.ParamNode, isQuoted: boolean = false, hasSpace: boolean = false) {
+    private async computeValueCompletion(param: moosedb.ParamNode, isQuoted: boolean = false, hasSpace: boolean = false) {
         let completions: Completion[] = [];
         let singleOK = !hasSpace;
         let vectorOK = isQuoted || !hasSpace;
 
-        let hasType = (type: string) => {
-            return param.cpp_type === type && singleOK || this.isVectorOf(param.cpp_type, type) && vectorOK;
+        let hasType = (type: string, atype: string | null = null) => {
+            return param.cpp_type === type && singleOK || this.isVectorOf(param.cpp_type, atype ? atype : type) && vectorOK;
         };
 
-        if (param.cpp_type === 'bool' && singleOK || this.isVectorOf(param.cpp_type, 'bool') && vectorOK) {
+        if (hasType('bool')) {
             completions = [
                 {
                     kind: 'value',
@@ -618,7 +852,7 @@ export class MooseDoc {
                     },
                     displayText: 'false'
                 }];
-        } else if (param.cpp_type === 'MooseEnum' && singleOK || param.cpp_type === 'MultiMooseEnum' && vectorOK) {
+        } else if (hasType('MooseEnum', 'MultiMooseEnum')) {
             if (param.options !== null && param.options !== undefined) {
                 for (let option of Array.from(param.options.split(' '))) {
                     completions.push({
@@ -645,7 +879,7 @@ export class MooseDoc {
             completions = this.computeSubBlockNameCompletion(['Postprocessors', 'UserObjects'], ['type']);
         } else if (hasType('VectorPostprocessorName')) {
             completions = this.computeSubBlockNameCompletion(['VectorPostprocessors'], ['type']);
-        } else if (param.cpp_type === 'OutputName' && singleOK || this.isVectorOf(param.cpp_type, 'OutputName') && vectorOK) {
+        } else if (hasType('OutputName')) {
             for (let output of ['exodus', 'csv', 'console', 'gmv', 'gnuplot', 'nemesis', 'tecplot', 'vtk', 'xda', 'xdr']) {
                 completions.push({
                     kind: "value",
@@ -658,7 +892,39 @@ export class MooseDoc {
             }
         } else if (hasType('FileName') || hasType('MeshFileName')) {
             completions = this.computeFileNameCompletion(['*.e']);
-        }
+        } else if (hasType('MaterialPropertyName')) {
+            
+            for (let { name, block, type } of this.yieldMaterialNameList()) {
+                if (name === null) {
+                    // we want to try to find a default f_name
+                    let paramList = await this.syntaxdb.fetchParameterList(["Materials", type]);
+                    for (let mparam of paramList) {
+                        if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default) {
+                            completions.push({
+                                kind: "value",
+                                displayText: mparam.default,
+                                description: ["Materials", block, type, mparam.default].join("/"),
+                                insertText: {
+                                    type: "text",
+                                    value: mparam.default
+                                }
+                            });
+                            break;
+                        }
+                    }
+                } else {
+                    completions.push({
+                        kind: "value",
+                        displayText: name,
+                        description: "Materials/" + block + "/" + type,
+                        insertText: {
+                            type: "text",
+                            value: name
+                        }
+                    });
+                }
+            }
+        } 
 
         return completions;
     }
@@ -717,7 +983,7 @@ export class MooseDoc {
                 let param: moosedb.ParamNode;
                 for (param of Array.from(await this.syntaxdb.fetchParameterList(originalConfigPath, explicitType))) {
                     if (param.name === paramName) {
-                        completions = this.computeValueCompletion(param);
+                        completions = await this.computeValueCompletion(param);
                         break;
                     }
                 }
@@ -779,6 +1045,8 @@ export class MooseDoc {
         }
         return completions;
     }
+
+    // TODO issue when sub-block named the same as a type should include a warning if this is the case
 
     /** assess the outline of the whole document
      * 
@@ -966,6 +1234,10 @@ export class MooseDoc {
 
         // get parent node
         let { child, config } = MooseDoc.getFinalChild(outlineItems, currLevel);
+        if (child === null) {
+            currLevel++;
+            return currLevel;
+        }
 
         // get details of the block
         let blockregex = blockOpenOneLevel.exec(line);
@@ -1015,8 +1287,10 @@ export class MooseDoc {
         }
         else {
             let { child } = MooseDoc.getFinalChild(outlineItems, currLevel);
-            child.end = [row, line.length];
-            currLevel--;
+            if (child !== null) {
+                child.end = [row, line.length];
+                currLevel--;
+            }
         }
         return currLevel;
     }
@@ -1034,22 +1308,31 @@ export class MooseDoc {
         let match = await this.findCurrentNode({ row: row, column: line.search(/[^\s]/) });
         // check the block name exists
         if (match === null) {
-            syntaxErrors.push({
-                row: row, columns: [0, line.length],
-                msg: 'parameter name does not exist for this block'
-            });
+            let topBlock = "";
+            if (outlineItems[outlineItems.length - 1] !== undefined) { topBlock = outlineItems[outlineItems.length - 1].name };
+            if (topBlock === "GlobalParams") { 
+                // TODO deal with variables in GlobalParams block 
+            } else {
+                syntaxErrors.push({
+                    row: row, columns: [0, line.length],
+                    msg: 'parameter name does not exist for this block'
+                });  
+            }
         }
         else {
             descript = match.node.description;
         }
         // TODO check value of type parameters are correct for block
         let { child: blockItem } = MooseDoc.getFinalChild(outlineItems, currLevel);
-        blockItem.parameters.push({
-            name: paramName,
-            description: descript,
-            start: [row, line.search(/[^/s]/)],
-            end: [row, line.length],
-        });
+        if (blockItem !== null) {
+            blockItem.parameters.push({
+                name: paramName,
+                description: descript,
+                start: [row, line.search(/[^/s]/)],
+                end: [row, line.length],
+            });
+        }
+
     }
 
     /** Once we find a block's closure, we update its item with details of the end row
@@ -1087,6 +1370,9 @@ export class MooseDoc {
      */
     private static getFinalChild(outline: OutlineBlockItem[], level: number) {
 
+        if (outline.length === 0) {
+            return { child: null, config: [] as string[] };
+        }
         let finalItem: OutlineBlockItem = outline[outline.length - 1];
         let item: OutlineBlockItem;
         let config = [finalItem.name];
