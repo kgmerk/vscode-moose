@@ -5,9 +5,7 @@
 
 This extension provides language support and IntelliSense for input files of MOOSE (Multiphysics Object Oriented Simulation Environment) applications.
 
-<aside class="notice">
-<b>Note</b>: A major API change occurred in v0.7.0
-</aside>
+**Note**: A major API change occurred in v0.7.0
 
 ## Features
 
