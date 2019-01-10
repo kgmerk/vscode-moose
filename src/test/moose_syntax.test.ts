@@ -99,7 +99,33 @@ suite("MooseSyntaxDB Tests", function () {
         ).to.eventually.be.instanceof(Array).that.has.length(0);
     });
 
-    test("fetch Parameter List (success)", function () {
+    test("fetch Parameter List (success main block)", function () {
+        db.setPaths(yamlPath, jsonPath);
+        // db.fetchParameterList(['Kernels']).then(value => {
+        //     console.log(value);
+        // });     
+        return expect(db.fetchParameterList(['Kernels'])
+        ).to.eventually.be.an('array').that.eqls([
+            {
+                name: "active",
+                group_name: "",
+                required: "No",
+                default: "__all__ ",
+                cpp_type: "std::vector<std::string>",
+                description: "If specified only the blocks named will be visited and made active",
+            },
+            {
+                name: "inactive",
+                group_name: "",
+                required: "No",
+                default: "",
+                cpp_type: "std::vector<std::string>",
+                description: "If specified blocks matching these identifiers will be skipped.",
+            }
+        ]);
+    });
+    
+    test("fetch Parameter List (success for type)", function () {
         db.setPaths(yamlPath, jsonPath);
         // db.rebuildAppData();
         // db.fetchParameterList(['Kernels','AllenCahn']).then(value => {
@@ -123,7 +149,7 @@ suite("MooseSyntaxDB Tests", function () {
         //     console.log(value);
         // });     
         return expect(db.fetchParameterList(['Mesh'], 'AnnularMesh')
-        ).to.eventually.be.an('array').that.has.length(37).and.deep.include({
+        ).to.eventually.be.an('array').that.has.length(38).and.deep.include({
             name: "enable",
             required: "No",
             default: "1",

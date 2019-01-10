@@ -200,7 +200,7 @@ suite("MooseDoc Tests", function () {
         //     console.log(value);
         // });
         return expect(mdoc.findCompletions(cursor)
-        ).to.eventually.be.an('array').that.has.length(20).and.deep.include({
+        ).to.eventually.be.an('array').that.has.length(19).and.deep.include({
             kind: "parameter",
             required: true,
             insertText: {

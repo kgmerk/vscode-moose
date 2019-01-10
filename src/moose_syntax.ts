@@ -37,6 +37,7 @@ export interface nodeMatch {
     fuzzyOnLast: boolean;
 }
 
+// TODO should probably switch to only using json file
 /**
  * A class to manage the MOOSE syntax nodes for an app
  * 
@@ -543,10 +544,42 @@ export class MooseSyntaxDB {
             }
         }
 
+        // TODO parameters aren't being treated entirely correctly, when dealing with .../<block>/* nodes
+        // the parameters in these nodes seem to be a mix of both block level (e.g. active and inactive) and subblock level (e.g. type)
+        // also, for some reason the yaml file does not contain, the 'active' parameter (but json does) for any nodes
+        // for now we assume that active/inactive params are only (and always) allowed for nodes with subblocks
+
         let paramList: ParamNode[] = [];
         for (node of Array.from(searchNodes)) {
+            let active_added = false;
             if (node !== null) {
-                paramList.push(...Array.from(node.parameters || [] as ParamNode[]));
+                if (node.parameters) {
+                    for (let param of node.parameters) {
+                        if (param.name !== "active" && param.name !== "inactive") {
+                            paramList.push(param);
+                        }
+                    }
+                }
+                if (node.subblocks && !active_added) {
+                    let active_param: ParamNode = {
+                        name: "active",
+                        group_name: "",
+                        required: "No",
+                        default: "__all__ ",
+                        cpp_type: "std::vector<std::string>",
+                        description: "If specified only the blocks named will be visited and made active",
+                    };
+                    paramList.push(active_param);
+                    let inactive_param: ParamNode = {
+                        name: "inactive",
+                        group_name: "",
+                        required: "No",
+                        default: "",
+                        cpp_type: "std::vector<std::string>",
+                        description: "If specified blocks matching these identifiers will be skipped.",
+                    };       
+                    paramList.push(inactive_param);
+                }
             }
         }
 

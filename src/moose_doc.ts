@@ -949,6 +949,7 @@ export class MooseDoc {
         MooseDoc.closeBlocks(outlineItems, 1, 0, row, line);
     }
 
+    // TODO assess if a sub-block is active (and grey out if not)
     private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
 
         let currBlockName: string;
