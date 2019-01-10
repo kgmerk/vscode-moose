@@ -98,10 +98,10 @@ let parameterCompletion = /^\s*[^\s#=\]]*$/;
 let otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/;
 let stdVector = /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/;
 // legacy regexp
-let blockOpenTop = /\[([^.\/][^\/]*)\]/;
-let blockCloseTop = /\[\]/;
-let blockOpenOneLevel = /\[\.\/([^.\/]+)\]/;
-let blockCloseOneLevel = /\[\.\.\/\]/;
+let blockOpenTop = /^\s*\[([^.\/][^\/]*)\]/;
+let blockCloseTop = /^\s*\[\]/;
+let blockOpenOneLevel = /^\s*\[\.\/([^.\/]+)\]/;
+let blockCloseOneLevel = /^\s*\[\.\.\/\]/;
 
 /**
  * A class to manage a MOOSE input document

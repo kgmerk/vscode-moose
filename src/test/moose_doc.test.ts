@@ -352,4 +352,26 @@ suite("MooseDoc Tests", function () {
         });
     });
 
+    test("Outline (with commented out block)", function () {
+        doc.text = `
+#[Kernels]
+#[]
+[Kernels]
+[]        `;
+        // mdoc.assessOutline().then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.assessOutline()).to.eventually.eql({
+            outline: [{
+                name: "Kernels",
+                description: "",
+                level: 1,
+                start: [3, 0], end: [4, 2],
+                children: [],
+                parameters: []
+            }],
+            errors: [],
+            edits: []
+        });
+    });
 });
