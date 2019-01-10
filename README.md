@@ -103,6 +103,14 @@ This extension is hosted at Visual Studio Marketplace
 
 Major API change (using syntax.yaml)
 
+### 0.7.1
+
+Fixed some bugs:
+
+- ignore commented out blocks
+- include active/inactive parameters at block level
+- underline TODO comments
+
 ## Acknowledgements
 
 Thanks to Daniel Schwen for supplying code for [MOOSE autocompletion in ATOM.io](https://github.com/dschwen/autocomplete-moose)

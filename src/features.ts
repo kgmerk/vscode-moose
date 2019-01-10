@@ -158,7 +158,11 @@ export class CompletionItemProvider implements vscode.CompletionItemProvider {
         let mcomps = await this.mooseDoc.findCompletions(pos);
         for (let mcomp of mcomps) {
             let completion = new vscode.CompletionItem(mcomp.displayText);
-            completion.documentation = mcomp.description;
+            if (mcomp.required) {
+                completion.documentation = mcomp.description + " (REQUIRED)";
+            } else {
+                completion.documentation = mcomp.description;
+            }
             if (mcomp.insertText.type === "snippet") {
                 completion.kind = selectCompleteKind(mcomp.kind, mcomp.required); //vscode.CompletionItemKind.Snippet;
                 let snippet = new vscode.SnippetString(mcomp.insertText.value);
