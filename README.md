@@ -118,6 +118,10 @@ Fixed some bugs:
 - fixed bug when parameter is defined before any blocks
 - fixed bug when parameters are defined in GlobalParams block
 
+### 0.8.1
+
+- added autosompletion for values of active/inactive parameters
+
 ## Acknowledgements
 
 Thanks to Daniel Schwen for supplying code for [MOOSE autocompletion in ATOM.io](https://github.com/dschwen/autocomplete-moose)
