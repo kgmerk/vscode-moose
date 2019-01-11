@@ -1127,7 +1127,7 @@ export class MooseDoc {
                 msg: 'final block(s) unclosed',
                 insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
             });
-            MooseDoc.closeBlocks(outlineItems, 1, row, "");
+            MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row, "");
         }
         emptyLines = this.detectBlankLines(emptyLines, row, textEdits, line);
 
@@ -1165,7 +1165,7 @@ export class MooseDoc {
                 msg: 'block opened before previous one closed',
                 insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
             });
-            MooseDoc.closeBlocks(outlineItems, 1, row - 1, line);
+            MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line);
             level = 0;
         }
 
@@ -1215,7 +1215,7 @@ export class MooseDoc {
                 msg: 'closed parent block before closing children',
                 insertionBefore: "[../]\n".repeat(currLevel - 1)
             });
-            MooseDoc.closeBlocks(outlineItems, 2, row - 1, line);
+            MooseDoc.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line);
         }
         // check a main block has been opened
         else if (currLevel < 1) {
@@ -1225,7 +1225,7 @@ export class MooseDoc {
                 insertionBefore: "[${1:name}]\n"
             });
         }
-        MooseDoc.closeBlocks(outlineItems, 1, row, line);
+        MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row, line);
     }
 
     private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
@@ -1297,7 +1297,7 @@ export class MooseDoc {
             });
         }
         else {
-            let levelsClosed = MooseDoc.closeBlocks(outlineItems, currLevel, row, line);
+            let levelsClosed = MooseDoc.closeFinalBlockAndChildren(outlineItems, currLevel, row, line);
             currLevel = currLevel - levelsClosed;
         }
         return currLevel;
@@ -1344,8 +1344,11 @@ export class MooseDoc {
 
     }
 
-    /** Once we find a block's closure, we update its item with details of the end row,
-     * and close any subblock which are still open
+
+
+    /** Close the final block, at a particular level, 
+     * and update its item with details of the end row etc.
+     * Also close any child blocks which are still open
      * 
      * @param outline 
      * @param blockLevel the level of the block to close
@@ -1353,7 +1356,7 @@ export class MooseDoc {
      * @param length the length of the closure line
      * @returns number of levels closed
      */
-    private static closeBlocks(outline: OutlineBlockItem[],
+    private static closeFinalBlockAndChildren(outline: OutlineBlockItem[],
         blockLevel: number, row: number, line: string) {
         let levelsClosed = 0;
 
