@@ -55,6 +55,12 @@ Files are diagnosed for syntax and formatting issues, including:
 - Bad block indentations
 - Multiple blank lines
 
+Additionally, blocks which have been set as inactive (by the `active` or `inactive` parameters) will be rendered faded out:
+
+![inactive-block](images/inactive_block.png)
+
+The amount of fading is controlled by the `editorUnnecessaryCode.opacity` theme colour or can be underlined using `editorUnnecessaryCode.border`.
+
 File diagnostics can be turned on/off in the [Settings](#settings).
 
 ## Auto-Formatting
@@ -121,6 +127,10 @@ Fixed some bugs:
 ### 0.8.1
 
 - added autocompletion for values of active/inactive parameters
+
+### 0.8.2
+
+- added identification and fading of inactive blocks
 
 ## Acknowledgements
 
