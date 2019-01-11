@@ -359,9 +359,9 @@ suite("MooseDoc Tests", function () {
 []
         `;
         let cursor = { row: 18, column: 20 };
-        mdoc.findCompletions(cursor).then(value => {
-            console.log(value);
-        });
+        // mdoc.findCompletions(cursor).then(value => {
+        //     console.log(value);
+        // });
         return expect(mdoc.findCompletions(cursor)
         ).to.eventually.eql([
             {
@@ -450,7 +450,7 @@ suite("MooseDoc Tests", function () {
                 start: [6, 0], end: [14, 0],
                 children: [{
                     name: "akernel",
-                    description: "",
+                    description: "Allen Cahn kernel used when 'mu' is a function of variables",
                     level: 2,
                     start: [7, 4], end: [10, 9],
                     children: [],
@@ -459,11 +459,11 @@ suite("MooseDoc Tests", function () {
                         {
                             "description": "A string representing the Moose Object that will be built by this Action\n",
                             "name": "type", "value": "ACBarrierFunction",
-                            "start": [8, 0], "end": [8, 37]
+                            "start": [8, 1], "end": [8, 37]
                         },
                         {
                             "description": "Whether or not this object should use the displaced mesh for computation. Note that in the case this is true but no displacements are provided in the Mesh block the undisplaced mesh will still be used.\n",
-                            "start": [9, 0], "end": [9, 46],
+                            "start": [9, 8], "end": [9, 46],
                             "name": "use_displaced_mesh", "value": null,
                         }
                     ]
@@ -514,6 +514,122 @@ suite("MooseDoc Tests", function () {
         });
     });
 
+    test("Outline (duplicate blocks and parameters)", function () {
+        doc.text = `
+[Kernels]
+    [./a]
+        type = b
+        type = c
+    [../]
+    [./a]
+    [../]
+[]
+[Kernels]
+[]        `;
+        // mdoc.assessOutline().then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.assessOutline()).to.eventually.eql({
+            "outline": [
+                {
+                    "name": "Kernels", "level": 1,
+                    "description": "",
+                    "start": [1, 0], "end": [8, 2],
+                    "inactive": [],
+                    "parameters": [],
+                    "children": [
+                        {
+                            "children": [],
+                            "description": "",
+                            "start": [2, 4], "end": [5, 9],
+                            "inactive": [],
+                            "level": 2,
+                            "name": "a",
+                            "parameters": [
+                                {
+                                    "description": "A string representing the Moose Object that will be built by this Action\n",
+                                    "start": [3, 8], "end": [3, 16],
+                                    "name": "type",
+                                    "value": "b"
+                                },
+                                {
+                                    "description": "A string representing the Moose Object that will be built by this Action\n",
+                                    "start": [4, 8], "end": [4, 16],
+                                    "name": "type",
+                                    "value": "c"
+                                }
+                            ],
+                        },
+                        {
+                            "children": [],
+                            "description": "",
+                            "start": [6, 4], "end": [7, 9],
+                            "inactive": [],
+                            "level": 2,
+                            "name": "a",
+                            "parameters": [],
+                        }
+                    ],
+
+                },
+                {
+                    "name": "Kernels", "level": 1,
+                    "description": "",
+                    "start": [9, 0], "end": [10, 2],
+                    "inactive": [],
+                    "parameters": [],
+                    "children": [],
+                }
+            ],
+            "errors": [
+                {
+                    "row": 4, "columns": [8, 16],
+                    "msg": "duplicate parameter name",
+                },
+                {
+                    "row": 6, "columns": [4, 7],
+                    "msg": "duplicate block name",
+                },
+                {
+                    "row": 9, "columns": [0, 9],
+                    "msg": "duplicate block name",
+                }
+            ],
+            "edits": []
+        });
+    });
+
+    test("Outline (with unknown parameter)", function () {
+        doc.text = `
+[Kernels]
+    a = 1
+[]        `;
+        // mdoc.assessOutline().then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.assessOutline()).to.eventually.eql({
+            outline: [{
+                name: "Kernels",
+                description: "",
+                level: 1,
+                start: [1, 0], end: [3, 2],
+                children: [],
+                inactive: [],
+                parameters: [{
+                    "name": "a",
+                    "description": "",
+                    "start": [2, 4], "end": [2, 9],
+                    "value": "1"
+                }],
+            }],
+            errors: [{
+                "msg": "parameter name was not found for this block: Kernels",
+                "columns": [4, 9], "row": 2
+            }],
+            edits: []
+        });
+    });
+
     test("Outline (with commented out block)", function () {
         doc.text = `
 #[Kernels]
@@ -537,6 +653,7 @@ suite("MooseDoc Tests", function () {
             edits: []
         });
     });
+
     test("Outline (with inactive blocks)", function () {
         doc.text = `
 [Kernels]
@@ -576,12 +693,12 @@ suite("MooseDoc Tests", function () {
                 inactive: ["b"],
                 parameters: [{
                     "description": "If specified only the blocks named will be visited and made active",
-                    "start": [2, 0], "end": [2, 18],
+                    "start": [2, 4], "end": [2, 18],
                     "name": "active", "value": "a c"
                 }],
             }],
             errors: [{
-                "row": 2, "columns": [0, 18],
+                "row": 2, "columns": [4, 18],
                 "msg": "subblock specified in active parameter value not found: c"
             }],
             edits: []

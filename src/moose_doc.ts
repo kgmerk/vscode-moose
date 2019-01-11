@@ -1089,14 +1089,14 @@ export class MooseDoc {
                 currLevel = 1;
                 indentLevel = 0;
             } else if (blockCloseTop.test(line)) {
-                this.closeMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
+                await this.closeMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 currLevel = 0;
                 indentLevel = 0;
             } else if (blockOpenOneLevel.test(line)) {
                 currLevel = await this.assessSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 indentLevel = currLevel - 1;
             } else if (blockCloseOneLevel.test(line)) {
-                currLevel = this.closeSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
+                currLevel = await this.closeSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 indentLevel = currLevel;
             } else if (/^\s*[_a-zA-Z0-9]+\s*=.*$/.test(line)) {
                 await this.assessParameter(line, outlineItems, syntaxErrors, row, currLevel);
@@ -1128,7 +1128,7 @@ export class MooseDoc {
                 msg: 'final block(s) unclosed',
                 insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
             });
-            MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row, "", syntaxErrors);
+            await this.closeFinalBlockAndChildren(outlineItems, 1, row, "", syntaxErrors);
         }
         emptyLines = this.detectBlankLines(emptyLines, row, textEdits, line);
 
@@ -1166,11 +1166,11 @@ export class MooseDoc {
                 msg: 'block opened before previous one closed',
                 insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
             });
-            MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line, syntaxErrors);
+            await this.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line, syntaxErrors);
             level = 0;
         }
 
-        // get details of the block
+        // get name of the block
         let blocknames = blockOpenTop.exec(line);
         blockName = blocknames !== null ? blocknames[1] : '';
         if (outlineItems.map(o => o.name).indexOf(blockName) !== -1) {
@@ -1179,23 +1179,11 @@ export class MooseDoc {
                 msg: 'duplicate block name'
             });
         }
-        let descript = '';
-        let match = await this.syntaxdb.matchSyntaxNode([blockName]);
-        // check the block name exists
-        if (match === null) {
-            syntaxErrors.push({
-                row: row, columns: [0, line.length],
-                msg: 'block name does not exist'
-            });
-        }
-        else {
-            descript = match.node.description;
-        }
 
         // add the block to the outline 
         outlineItems.push({
             name: blockName,
-            description: descript,
+            description: "",
             level: 1,
             start: [row, line.search(/\[/)],
             end: null,
@@ -1207,7 +1195,7 @@ export class MooseDoc {
         return;
     }
 
-    private closeMainBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
+    private async closeMainBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
 
         // check all sub-blocks have been closed
         if (currLevel > 1) {
@@ -1216,7 +1204,7 @@ export class MooseDoc {
                 msg: 'closed parent block before closing children',
                 insertionBefore: "[../]\n".repeat(currLevel - 1)
             });
-            MooseDoc.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line, syntaxErrors);
+            await this.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line, syntaxErrors);
         }
         // check a main block has been opened
         else if (currLevel < 1) {
@@ -1226,7 +1214,7 @@ export class MooseDoc {
                 insertionBefore: "[${1:name}]\n"
             });
         }
-        MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row, line, syntaxErrors);
+        await this.closeFinalBlockAndChildren(outlineItems, 1, row, line, syntaxErrors);
     }
 
     private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
@@ -1250,30 +1238,14 @@ export class MooseDoc {
             return currLevel;
         }
 
-        // get details of the block
+        // get name of the block
         let blockregex = blockOpenOneLevel.exec(line);
         currBlockName = blockregex !== null ? blockregex[1] : '';
-        if (child.children.map(o => o.name).indexOf(currBlockName) !== -1) {
-            syntaxErrors.push({
-                row: row, columns: [0, line.length],
-                msg: 'duplicate block name'
-            });
-        }
-
-        let descript = '';
-        config.push(currBlockName);
-        let match = await this.syntaxdb.matchSyntaxNode([currBlockName]);
-        // check the block name exists
-        if (match === null) {
-        }
-        else {
-            descript = match.node.description;
-        }
 
         currLevel++;
         child.children.push({
             name: currBlockName,
-            description: descript,
+            description: "",
             level: currLevel,
             start: [row, line.search(/\[/)],
             end: null,
@@ -1284,7 +1256,7 @@ export class MooseDoc {
         return currLevel;
     }
 
-    private closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
+    private async closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
         if (currLevel === 0) {
             syntaxErrors.push({
                 row: row, columns: [0, line.length],
@@ -1298,7 +1270,7 @@ export class MooseDoc {
             });
         }
         else {
-            let levelsClosed = MooseDoc.closeFinalBlockAndChildren(outlineItems, currLevel, row, line, syntaxErrors);
+            let levelsClosed = await this.closeFinalBlockAndChildren(outlineItems, currLevel, row, line, syntaxErrors);
             currLevel = currLevel - levelsClosed;
         }
         return currLevel;
@@ -1312,39 +1284,13 @@ export class MooseDoc {
         let valueRegex = /^\s*[_a-zA-Z0-9]+\s*=\s*[\'\"]*([^#\'\"]+)/.exec(line);
         let paramValue = valueRegex !== null ? valueRegex[1].trim() === "" ? null : valueRegex[1].trim() : null;  // TODO this won't capture values which go over multiple lines 
 
-        if (outlineItems.map(o => o.name).indexOf(paramName) !== -1) {
-            syntaxErrors.push({
-                row: row, columns: [0, line.length],
-                msg: 'duplicate parameter name'
-            });
-        }
-        let descript = '';
-        // TODO this fails if there are syntax errors in the block (e.g. spurious subblock closures), and may be inefficient, could use knowledge of current subblock path?
-        let match = await this.findCurrentNode({ row: row, column: line.search(/[^\s]/) });
-        // check the block name exists
-        if (match === null) {
-            let topBlock = "";
-            if (outlineItems[outlineItems.length - 1] !== undefined) { topBlock = outlineItems[outlineItems.length - 1].name };
-            if (topBlock === "GlobalParams") {
-                // TODO deal with variables in GlobalParams block 
-            } else {
-                syntaxErrors.push({
-                    row: row, columns: [0, line.length],
-                    msg: 'parameter name does not exist for this block'
-                });
-            }
-        }
-        else {
-            descript = match.node.description;
-        }
-        // TODO check value of type parameters are correct for block
         let { child: blockItem } = MooseDoc.getFinalChild(outlineItems, currLevel);
         if (blockItem !== null) {
             blockItem.parameters.push({
                 name: paramName,
-                description: descript,
-                start: [row, line.search(/[^/s]/)],
-                end: [row, line.length],
+                description: "",
+                start: [row, line.search(/[^\s]/)],
+                end: [row, line.length], // TODO end before comments
                 value: paramValue
             });
         }
@@ -1354,31 +1300,45 @@ export class MooseDoc {
     /**
      * close a single block, updating its end row and active children
      */
-    private static closeSingleBlock(block: OutlineBlockItem, endPos: [number, number]) {
+    private async closeSingleBlock(block: OutlineBlockItem, endPos: [number, number], parentPath: string[]) {
 
         let syntaxErrors: SyntaxError[] = [];
 
         // update end row
         block.end = endPos;
-        // check if active / inactive parameters are present, and derive inactive children
-        let childNames = block.children.map(child => child.name);
-        let inactiveChildren: string[] = [];
-        let activeValues: string[] | null = null;
-        let activePos: [number, [number, number]] | null = null;
-        let inactiveValues: string[] | null = null;
-        let inactivePos: [number, [number, number]] | null = null;
-        for (let param of block.parameters) {
-            if (param.name === "active" && param.value) {
-                activePos = [param.start[0], [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]]];
-                if (param.value.search("__all__") < 0) {
-                    activeValues = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings
-                }
-            } else if (param.name === "inactive" && param.value) {
-                inactivePos = [param.start[0], [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]]];
-                inactiveValues = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings                
+
+        // construct a dictionary of child names
+        let childDict: { [id: string]: OutlineBlockItem[] } = {};
+        for (let child of block.children) {
+            if (child.name in childDict) {
+                childDict[child.name].push(child);
+                // add syntax error for duplication
+                syntaxErrors.push({
+                    row: child.start[0], columns: [child.start[1], child.end ? ((child.start[0] === child.end[0]) ? child.end[1] : child.end[0]) : child.start[1]],
+                    msg: 'duplicate block name'
+                });
+            } else {
+                childDict[child.name] = [child];
             }
         }
-        if (activeValues && inactiveValues) {
+
+        // construct a dictionary of paramter names
+        let paramDict: { [id: string]: OutlineParamItem[] } = {};
+        for (let param of block.parameters) {
+            if (param.name in paramDict) {
+                paramDict[param.name].push(param);
+                // add syntax error for duplication
+                syntaxErrors.push({
+                    row: param.start[0], columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
+                    msg: 'duplicate parameter name'
+                });
+            } else {
+                paramDict[param.name] = [param];
+            }
+        }
+
+        // check if active / inactive parameters are present, and derive inactive children
+        if ("active" in paramDict && "inactive" in paramDict) {
             // TODO does active override inactive or visa-versa, or are they not both allowed
             let error: SyntaxError = {
                 row: block.start[0],
@@ -1386,42 +1346,119 @@ export class MooseDoc {
                 msg: 'active and inactive parameters are not allowed in the same block'
             };
             syntaxErrors.push(error);
-        } else if (activeValues) {
-            for (let value of activeValues) {
-                if (childNames.indexOf(value) < 0 && activePos) {
-                    let error: SyntaxError = {
-                        row: activePos[0],
-                        columns: activePos[1],
-                        msg: 'subblock specified in active parameter value not found: ' + value
-                    };
-                    syntaxErrors.push(error);
+        } else if ("active" in paramDict) {
+            // only use first instance
+            let param = paramDict["active"][0];
+            if (param.value) {
+                let activeBlocks = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings
+                // check the specified blocks are present
+                for (let activeBlock of activeBlocks) {
+                    if (!(activeBlock in childDict)) {
+                        let error: SyntaxError = {
+                            row: param.start[0],
+                            columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
+                            msg: 'subblock specified in active parameter value not found: ' + activeBlock
+                        };
+                        syntaxErrors.push(error);
+                    }
                 }
+                // add any subblock missing from active list to inactive 
+                let inactiveChildren: string[] = [];
+                for (let name in childDict) {
+                    if (activeBlocks.indexOf(name) < 0) {
+                        inactiveChildren.push(name);
+                    }
+                }
+                block.inactive = inactiveChildren;
             }
-            for (let name of childNames) {
-                if (activeValues.indexOf(name) < 0) {
-                    inactiveChildren.push(name);
+        } else if ("inactive" in paramDict) {
+            // only use first instance
+            let param = paramDict["inactive"][0];
+            if (param.value) {
+                let inactiveBlocks = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings
+                // check the specified blocks are present
+                for (let inactiveBlock of inactiveBlocks) {
+                    if (!(inactiveBlock in childDict)) {
+                        let error: SyntaxError = {
+                            row: param.start[0],
+                            columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
+                            msg: 'subblock specified in inactive parameter value not found: ' + inactiveBlock
+                        };
+                        syntaxErrors.push(error);
+                    }
                 }
-            }
-        } else if (inactiveValues) {
-            for (let value of inactiveValues) {
-                if (childNames.indexOf(value) < 0 && inactivePos) {
-                    let error: SyntaxError = {
-                        row: inactivePos[0],
-                        columns: inactivePos[1],
-                        msg: 'subblock specified in inactive parameter value not found: ' + value
-                    };
-                    syntaxErrors.push(error);
+                // add any subblock included in inactive list to inactive 
+                let inactiveChildren: string[] = [];
+                for (let name in childDict) {
+                    if (inactiveBlocks.indexOf(name) >= 0) {
+                        inactiveChildren.push(name);
+                    }
                 }
-            }
-            for (let name of childNames) {
-                if (inactiveValues.indexOf(name) >= 0) {
-                    inactiveChildren.push(name);
-                }
+                block.inactive = inactiveChildren;
             }
         }
-        block.inactive = inactiveChildren;
 
-        // TODO check all required parameters are present (but issue with parameters specified in globalparams)
+        // find the path of the node for the block
+        let configPath = parentPath.concat([block.name]);
+        let blockMatch = await this.syntaxdb.matchSyntaxNode(configPath);
+        let typeName: null | string = null;
+        let typeMatch: null | moosedb.nodeMatch = null;
+        let node: moosedb.SyntaxNode;
+        if (blockMatch !== null) {
+            // find type of block (use only first instance)
+            if ("type" in paramDict && paramDict["type"][0].value) {
+                typeName = paramDict["type"][0].value
+                let typedPath = this.syntaxdb.getTypedPath(configPath, typeName, blockMatch.fuzzyOnLast);
+                typeMatch = await this.syntaxdb.matchSyntaxNode(typedPath);
+            }
+        }
+        if (blockMatch === null) {
+            let error: SyntaxError = {
+                row: block.start[0],
+                columns: [block.start[1], block.start[1]],
+                msg: 'block path was not found in database: ' + configPath.join("/")
+            };
+            syntaxErrors.push(error);
+        } else {
+            // add details for block
+            if (typeMatch) {
+                node = typeMatch.node
+            } else {
+                node = blockMatch.node
+            }
+            block.description = node.description;
+
+            // convert node parameters into dictionary
+            let nodeParamDict: { [id: string]: moosedb.ParamNode } = {};
+            for (let nparam of await this.syntaxdb.fetchParameterList(configPath, typeName)) {
+                nodeParamDict[nparam.name] = nparam;
+            }
+
+            // add details and checks for parameters
+            if (configPath[0] !== "GlobalParams") {
+                for (let pname in paramDict) {
+                    if (pname in nodeParamDict) {
+                        for (let param of paramDict[pname]) {
+                            param.description = nodeParamDict[pname].description;
+                        }
+                    } else {
+                        for (let param of paramDict[pname]) {
+                            let stringPath = (typeName !== null) ? configPath.concat([typeName]).join("/") : configPath.join("/");
+                            let error: SyntaxError = {
+                                row: param.start[0],
+                                columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
+                                msg: 'parameter name was not found for this block: ' + stringPath
+                            };
+                            syntaxErrors.push(error);
+                        }
+                    }
+                }
+            } else {
+                // TODO deal with parameters in GlobalParams block (must gather then on a first parse)
+            }
+        }
+
+        // TODO check all required parameters are present (but must account for parameters specified in GlobalParams)
 
         return syntaxErrors;
     }
@@ -1437,9 +1474,10 @@ export class MooseDoc {
      * @param syntaxErrors the list of errors to add to
      * @returns number of levels closed
      */
-    private static closeFinalBlockAndChildren(outline: OutlineBlockItem[],
+    private async closeFinalBlockAndChildren(outline: OutlineBlockItem[],
         blockLevel: number, row: number, line: string, syntaxErrors: SyntaxError[]) {
         let levelsClosed = 0;
+        let configPath: string[] = [];
 
         // if no blocks
         if (outline.length === 0) {
@@ -1452,6 +1490,7 @@ export class MooseDoc {
             if (item.children.length === 0) {
                 return levelsClosed;
             }
+            configPath.push(item.name);
             item = item.children[item.children.length - 1];
         }
 
@@ -1460,15 +1499,17 @@ export class MooseDoc {
             // throw Error('block already closed');
         } else {
             let closePos = line.search(/\]/);
-            syntaxErrors.push(...MooseDoc.closeSingleBlock(item, [row, closePos >= 0 ? closePos + 1 : 0]));
+            let errors = await this.closeSingleBlock(item, [row, closePos >= 0 ? closePos + 1 : 0], configPath)
+            syntaxErrors.push(...errors);
             levelsClosed++;
         }
-
         // search for any open children and close them
         while (item.children.length > 0) {
+            configPath.push(item.name);
             item = item.children[item.children.length - 1];
             if (item.end === null) {
-                syntaxErrors.push(...MooseDoc.closeSingleBlock(item, [row, 0]));
+                let errors = await this.closeSingleBlock(item, [row, 0], configPath)
+                syntaxErrors.push(...errors);
                 levelsClosed++;
             }
         }
