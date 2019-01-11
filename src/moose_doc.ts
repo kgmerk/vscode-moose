@@ -179,7 +179,7 @@ export class MooseDoc {
 
     }
 
-    private async findValueNode(word: string, paramName: string, paramsList: moosedb.ParamNode[]) {
+    private async findValueNode(word: string, paramName: string, paramsList: moosedb.ParamNode[], valuePath: string[]) {
 
         let node: ValueNode | null = null;
         let configPath: string[] | null = null;
@@ -214,16 +214,18 @@ export class MooseDoc {
                     blockNames = ['Postprocessors', 'UserObjects'];
                 } else if (hasType('VectorPostprocessorName')) {
                     blockNames = ['VectorPostprocessors'];
-                }  
-                
+                } else if ((param.name === 'active' || param.name === "inactive") && valuePath.length === 1) {
+                    blockNames = valuePath;
+                }
+
                 if (blockNames) {
                     for (let blockName of blockNames) {
-                        for (let {name, row} of this.yieldSubBlockList(blockName, [])) {
+                        for (let { name, row } of this.yieldSubBlockList(blockName, [])) {
                             if (name === word) {
                                 // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
                                 configPath = [blockName, name];
                                 node = {
-                                    description: "Referenced " + blockName.slice(0, blockName.length-1),
+                                    description: "Referenced " + blockName.slice(0, blockName.length - 1),
                                     defPosition: { row: row, column: 0 }
                                 };
                                 break;
@@ -234,13 +236,15 @@ export class MooseDoc {
                         }
                     }
                 } else if (hasType('MaterialPropertyName')) {
+                    // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
+                    // which is labelled as a string vector, but is actually MaterialPropertyName vector
                     for (let { name, position, block, type } of this.yieldMaterialNameList()) {
                         if (name === word) {
                             configPath = ["Materials", block, type, name];
                             node = {
                                 description: "Referenced Material",
                                 defPosition: position
-                            };                                
+                            };
                             return { pnode: node, path: configPath };
                         } else if (name === null) {
                             // we want to try to find a default f_name
@@ -251,7 +255,7 @@ export class MooseDoc {
                                     node = {
                                         description: "Referenced Material",
                                         defPosition: position
-                                    }; 
+                                    };
                                     return { pnode: node, path: configPath };
                                 }
                             }
@@ -264,7 +268,7 @@ export class MooseDoc {
                 }
                 return { pnode: node, path: configPath };
             }
-            
+
         }
 
         return { pnode: node, path: configPath };
@@ -334,7 +338,7 @@ export class MooseDoc {
             // value of parameter
             let paramName = rmatch[1];
             let paramsList = await this.syntaxdb.fetchParameterList(configPath, explicitType);
-            let { pnode, path } = await this.findValueNode(word, paramName, paramsList);
+            let { pnode, path } = await this.findValueNode(word, paramName, paramsList, configPath);
             if (pnode && path) {
                 configPath = path;
                 node = pnode;
@@ -384,7 +388,7 @@ export class MooseDoc {
             let hasSpace = !!match[3];
             for (param of Array.from(await this.syntaxdb.fetchParameterList(configPath, explicitType))) {
                 if (param.name === paramName) {
-                    completions = await this.computeValueCompletion(param, isQuoted, hasSpace);
+                    completions = await this.computeValueCompletion(param, configPath, isQuoted, hasSpace);
                     break;
                 }
             }
@@ -669,7 +673,7 @@ export class MooseDoc {
         let level = 0;
         let subBlockName: string | null = null;
         let subBlockType: string | null = null;
-        let matNames: {name: string | null, block: string, position: Position, type: string}[] = [];
+        let matNames: { name: string | null, block: string, position: Position, type: string }[] = [];
         let regExec: RegExpExecArray | null;
         // let filterList = Array.from(propertyNames).map(property => ({ name: property, re: new RegExp(`^\\s*${property}\\s*=\\s*([^\\s#=\\]]+)$`) }));
 
@@ -714,9 +718,9 @@ export class MooseDoc {
                         block: subBlockName,
                         type: subBlockType,
                         position: { row: subblockRow, column: 0 } as Position
-                    }; 
+                    };
                 }
-                if (level === 0 && subBlockType !== null) { 
+                if (level === 0 && subBlockType !== null) {
                     for (let matname of matNames) {
                         matname.type = subBlockType
                         yield matname;
@@ -738,7 +742,7 @@ export class MooseDoc {
                         name: f_name,
                         block: subBlockName,
                         type: "",
-                        position: { row: row, column: line.search(RegExp("[\\s\\\'\\\"]"+f_name+"[\\s\\\'\\\"]")) + 1 } as Position
+                        position: { row: row, column: line.search(RegExp("[\\s\\\'\\\"]" + f_name + "[\\s\\\'\\\"]")) + 1 } as Position
                     }];
                 } else if (regExec = /^\s*prop_names\s*=\s*[\'\"]*([^#\'\"]+)/.exec(line)) {
                     // find prop_names (used for constants)
@@ -750,11 +754,11 @@ export class MooseDoc {
                             name: p_name,
                             block: subBlockName,
                             type: "",
-                            position: { row: row, column: line.search(RegExp("[\\s\\\'\\\"]"+p_name+"[\\s\\\'\\\"]")) + 1 } as Position
-                        });                        
+                            position: { row: row, column: line.search(RegExp("[\\s\\\'\\\"]" + p_name + "[\\s\\\'\\\"]")) + 1 } as Position
+                        });
                     }
                 }
-                
+
                 // TODO is there an obvious way to work out which parameter defines the materials names?
             }
 
@@ -825,11 +829,10 @@ export class MooseDoc {
      * @param isQuoted 
      * @param hasSpace 
      */
-    private async computeValueCompletion(param: moosedb.ParamNode, isQuoted: boolean = false, hasSpace: boolean = false) {
+    private async computeValueCompletion(param: moosedb.ParamNode, configPath: string[], isQuoted: boolean = false, hasSpace: boolean = false) {
         let completions: Completion[] = [];
         let singleOK = !hasSpace;
         let vectorOK = isQuoted || !hasSpace;
-
         let hasType = (type: string, atype: string | null = null) => {
             return param.cpp_type === type && singleOK || this.isVectorOf(param.cpp_type, atype ? atype : type) && vectorOK;
         };
@@ -893,7 +896,8 @@ export class MooseDoc {
         } else if (hasType('FileName') || hasType('MeshFileName')) {
             completions = this.computeFileNameCompletion(['*.e']);
         } else if (hasType('MaterialPropertyName')) {
-            
+            // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
+            // which is labelled as a string vector, but is actually MaterialPropertyName vector
             for (let { name, block, type } of this.yieldMaterialNameList()) {
                 if (name === null) {
                     // we want to try to find a default f_name
@@ -924,7 +928,9 @@ export class MooseDoc {
                     });
                 }
             }
-        } 
+        } else if (param.name === 'active' || param.name === "inactive") {
+            completions = this.computeSubBlockNameCompletion(configPath, ['type']);
+        }
 
         return completions;
     }
@@ -983,7 +989,7 @@ export class MooseDoc {
                 let param: moosedb.ParamNode;
                 for (param of Array.from(await this.syntaxdb.fetchParameterList(originalConfigPath, explicitType))) {
                     if (param.name === paramName) {
-                        completions = await this.computeValueCompletion(param);
+                        completions = await this.computeValueCompletion(param, originalConfigPath);
                         break;
                     }
                 }
@@ -1310,13 +1316,13 @@ export class MooseDoc {
         if (match === null) {
             let topBlock = "";
             if (outlineItems[outlineItems.length - 1] !== undefined) { topBlock = outlineItems[outlineItems.length - 1].name };
-            if (topBlock === "GlobalParams") { 
+            if (topBlock === "GlobalParams") {
                 // TODO deal with variables in GlobalParams block 
             } else {
                 syntaxErrors.push({
                     row: row, columns: [0, line.length],
                     msg: 'parameter name does not exist for this block'
-                });  
+                });
             }
         }
         else {
