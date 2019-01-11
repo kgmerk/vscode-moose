@@ -437,8 +437,10 @@ suite("MooseDoc Tests", function () {
                     level: 2,
                     start: [3, 4], end: [4, 9],
                     children: [],
+                    inactive: [],
                     parameters: []
                 }],
+                inactive: [],
                 parameters: []
             },
             {
@@ -452,6 +454,7 @@ suite("MooseDoc Tests", function () {
                     level: 2,
                     start: [7, 4], end: [10, 9],
                     children: [],
+                    inactive: [],
                     parameters: [
                         {
                             "description": "A string representing the Moose Object that will be built by this Action\n",
@@ -465,6 +468,7 @@ suite("MooseDoc Tests", function () {
                         }
                     ]
                 }],
+                inactive: [],
                 parameters: []
             }],
             errors: [{
@@ -526,7 +530,8 @@ suite("MooseDoc Tests", function () {
                 level: 1,
                 start: [3, 0], end: [4, 2],
                 children: [],
-                parameters: []
+                inactive: [],
+                parameters: [],
             }],
             errors: [],
             edits: []

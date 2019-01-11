@@ -67,6 +67,7 @@ export interface OutlineBlockItem {
     description: string;
     children: OutlineBlockItem[];
     parameters: OutlineParamItem[];
+    inactive: string[];  // a list of inactive children names
 }
 export interface SyntaxError {
     row: number;
@@ -237,7 +238,7 @@ export class MooseDoc {
                     }
                 } else if (hasType('MaterialPropertyName')) {
                     // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
-                    // which is labelled as a string vector, but is actually MaterialPropertyName vector
+                    // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
                     for (let { name, position, block, type } of this.yieldMaterialNameList()) {
                         if (name === word) {
                             configPath = ["Materials", block, type, name];
@@ -897,7 +898,7 @@ export class MooseDoc {
             completions = this.computeFileNameCompletion(['*.e']);
         } else if (hasType('MaterialPropertyName')) {
             // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
-            // which is labelled as a string vector, but is actually MaterialPropertyName vector
+            // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
             for (let { name, block, type } of this.yieldMaterialNameList()) {
                 if (name === null) {
                     // we want to try to find a default f_name
@@ -1056,8 +1057,13 @@ export class MooseDoc {
 
     /** assess the outline of the whole document
      * 
+     * Returns an object containing:
+     * 
+     * - **outline**: a heirarchical outline of the the documents blocks and subblocks
+     * - **edits**: a list of ranges in the document where formatting edits are reccomended (and what those edits are)
+     * - **errors**: a list of ranges in the document where there are syntactical errors (and what those erros are)
+     * 
      * @param indentLength the number of spaces per indent
-     * @returns outline structure, list of syntax errors, list of suggested text edits (to improve formatting)
      * 
      */
     public async assessOutline(indentLength: number = 4) {
@@ -1098,8 +1104,6 @@ export class MooseDoc {
                 indentLevel = currLevel;
             }
 
-            // TODO check all required parameters are present (on closing sub-block/block)
-
             // check all lines are at correct indentation level
             // TODO indent lines after parameter definitions (that are not just comments) by extra space == '<name> = '
             let firstChar = line.search(/[^\s]/);
@@ -1123,7 +1127,7 @@ export class MooseDoc {
                 msg: 'final block(s) unclosed',
                 insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
             });
-            MooseDoc.closeBlocks(outlineItems, 1, currLevel - 1, row, "");
+            MooseDoc.closeBlocks(outlineItems, 1, row, "");
         }
         emptyLines = this.detectBlankLines(emptyLines, row, textEdits, line);
 
@@ -1161,7 +1165,7 @@ export class MooseDoc {
                 msg: 'block opened before previous one closed',
                 insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
             });
-            MooseDoc.closeBlocks(outlineItems, 1, level - 1, row - 1, line);
+            MooseDoc.closeBlocks(outlineItems, 1, row - 1, line);
             level = 0;
         }
 
@@ -1195,7 +1199,8 @@ export class MooseDoc {
             start: [row, line.search(/\[/)],
             end: null,
             children: [],
-            parameters: []
+            parameters: [],
+            inactive: []
         });
 
         return;
@@ -1210,7 +1215,7 @@ export class MooseDoc {
                 msg: 'closed parent block before closing children',
                 insertionBefore: "[../]\n".repeat(currLevel - 1)
             });
-            MooseDoc.closeBlocks(outlineItems, 2, currLevel - 1, row - 1, line);
+            MooseDoc.closeBlocks(outlineItems, 2, row - 1, line);
         }
         // check a main block has been opened
         else if (currLevel < 1) {
@@ -1220,10 +1225,9 @@ export class MooseDoc {
                 insertionBefore: "[${1:name}]\n"
             });
         }
-        MooseDoc.closeBlocks(outlineItems, 1, 0, row, line);
+        MooseDoc.closeBlocks(outlineItems, 1, row, line);
     }
 
-    // TODO assess if a sub-block is active (and grey out if not)
     private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
 
         let currBlockName: string;
@@ -1273,7 +1277,8 @@ export class MooseDoc {
             start: [row, line.search(/\[/)],
             end: null,
             children: [],
-            parameters: []
+            parameters: [],
+            inactive: []
         });
         return currLevel;
     }
@@ -1292,11 +1297,8 @@ export class MooseDoc {
             });
         }
         else {
-            let { child } = MooseDoc.getFinalChild(outlineItems, currLevel);
-            if (child !== null) {
-                child.end = [row, line.length];
-                currLevel--;
-            }
+            let levelsClosed = MooseDoc.closeBlocks(outlineItems, currLevel, row, line);
+            currLevel = currLevel - levelsClosed;
         }
         return currLevel;
     }
@@ -1311,6 +1313,7 @@ export class MooseDoc {
             });
         }
         let descript = '';
+        // TODO this fails if there are syntax errors in the block (e.g. spurious subblock closures), and may be inefficient, could use knowledge of current subblock path?
         let match = await this.findCurrentNode({ row: row, column: line.search(/[^\s]/) });
         // check the block name exists
         if (match === null) {
@@ -1341,32 +1344,54 @@ export class MooseDoc {
 
     }
 
-    /** Once we find a block's closure, we update its item with details of the end row
+    /** Once we find a block's closure, we update its item with details of the end row,
+     * and close any subblock which are still open
      * 
      * @param outline 
      * @param blockLevel the level of the block to close
-     * @param childLevels the number of child levels to also close
      * @param row the row number of the closure
      * @param length the length of the closure line
+     * @returns number of levels closed
      */
     private static closeBlocks(outline: OutlineBlockItem[],
-        blockLevel: number, childLevels: number, row: number, line: string) {
+        blockLevel: number, row: number, line: string) {
+        let levelsClosed = 0;
+
+        // if no blocks
         if (outline.length === 0) {
-            return;
+            return levelsClosed;
         }
+        
+        // navigate to required initial block level
         let item: OutlineBlockItem = outline[outline.length - 1];
-        for (let l = 1; l < blockLevel + childLevels + 1; l++) {
-            if (l === blockLevel) {
-                let closePos = line.search(/\]/);
-                item.end = [row, closePos >= 0 ? closePos + 1 : 0];
-            } else if (l > blockLevel) {
-                item.end = [row, 0];
-            }
+        for (let l = 1; l < blockLevel; l++) {
             if (item.children.length === 0) {
-                break;
+                return levelsClosed;
             }
             item = item.children[item.children.length - 1];
         }
+
+        // check if this block is already closed and, if not close it
+        if (item.end !== null) {
+            // throw Error('block already closed');
+        } else {
+            let closePos = line.search(/\]/);
+            item.end = [row, closePos >= 0 ? closePos + 1 : 0];
+            levelsClosed++;
+        }
+
+        // search for any open children and close them
+        while (item.children.length > 0) {
+            item = item.children[item.children.length - 1];
+            if (item.end === null) {
+                item.end = [row, 0];
+                levelsClosed++;
+            }
+        }
+
+        // TODO check all required parameters are present (on closing sub-block/block)
+
+        return levelsClosed;
     }
 
     /** navigate to the final child item of a certain level
