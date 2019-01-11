@@ -364,45 +364,45 @@ suite("MooseDoc Tests", function () {
         });
         return expect(mdoc.findCompletions(cursor)
         ).to.eventually.eql([
-        {
-              "description": "Materials/mat1/DerivativeParsedMaterial",
-              "displayText": "dpm",
-              "insertText": {
-                "type": "text",
-                "value": "dpm"
-              },
-              "kind": "value",
-              "replacementPrefix": ""
+            {
+                "description": "Materials/mat1/DerivativeParsedMaterial",
+                "displayText": "dpm",
+                "insertText": {
+                    "type": "text",
+                    "value": "dpm"
+                },
+                "kind": "value",
+                "replacementPrefix": ""
             },
             {
-              "description": "Materials/g_eta/BarrierFunctionMaterial/g",
-              "displayText": "g",
-              "insertText": {
-                "type": "text",
-                "value": "g"
-              },
-              "kind": "value",
-              "replacementPrefix": ""
+                "description": "Materials/g_eta/BarrierFunctionMaterial/g",
+                "displayText": "g",
+                "insertText": {
+                    "type": "text",
+                    "value": "g"
+                },
+                "kind": "value",
+                "replacementPrefix": ""
             },
             {
-              "description": "Materials/constants/GenericConstantMaterial",
-              "displayText": "M",
-              "insertText": {
-                "type": "text",
-                "value": "M"
-              },
-              "kind": "value",
-              "replacementPrefix": ""
+                "description": "Materials/constants/GenericConstantMaterial",
+                "displayText": "M",
+                "insertText": {
+                    "type": "text",
+                    "value": "M"
+                },
+                "kind": "value",
+                "replacementPrefix": ""
             },
             {
-              "description": "Materials/constants/GenericConstantMaterial",
-              "displayText": "L",
-              "insertText": {
-                "type": "text",
-                "value": "L"
-              },
-              "kind": "value",
-              "replacementPrefix": ""
+                "description": "Materials/constants/GenericConstantMaterial",
+                "displayText": "L",
+                "insertText": {
+                    "type": "text",
+                    "value": "L"
+                },
+                "kind": "value",
+                "replacementPrefix": ""
             }
         ]);
     });
@@ -417,7 +417,7 @@ suite("MooseDoc Tests", function () {
 [Kernels]
     [./akernel]
  type = ACBarrierFunction # a comment
-        use_displaced_mesh = 1
+        use_displaced_mesh = # another comment
     [../]
 
 
@@ -458,13 +458,13 @@ suite("MooseDoc Tests", function () {
                     parameters: [
                         {
                             "description": "A string representing the Moose Object that will be built by this Action\n",
-                            "name": "type",
+                            "name": "type", "value": "ACBarrierFunction",
                             "start": [8, 0], "end": [8, 37]
                         },
                         {
                             "description": "Whether or not this object should use the displaced mesh for computation. Note that in the case this is true but no displacements are provided in the Mesh block the undisplaced mesh will still be used.\n",
-                            "start": [9, 0], "end": [9, 30],
-                            "name": "use_displaced_mesh",
+                            "start": [9, 0], "end": [9, 46],
+                            "name": "use_displaced_mesh", "value": null,
                         }
                     ]
                 }],
@@ -534,6 +534,56 @@ suite("MooseDoc Tests", function () {
                 parameters: [],
             }],
             errors: [],
+            edits: []
+        });
+    });
+    test("Outline (with inactive blocks)", function () {
+        doc.text = `
+[Kernels]
+    active = 'a c'
+    [./a]
+    [../]
+    [./b]
+    [../]
+[]        `;
+        // mdoc.assessOutline().then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.assessOutline()).to.eventually.eql({
+            outline: [{
+                name: "Kernels",
+                description: "",
+                level: 1,
+                start: [1, 0], end: [7, 2],
+                children: [{
+                    "description": "",
+                    "start": [3, 4], "end": [4, 9],
+                    "inactive": [],
+                    "level": 2,
+                    "name": "a",
+                    "parameters": [],
+                    "children": []
+                },
+                {
+                    "description": "",
+                    "start": [5, 4], "end": [6, 9],
+                    "inactive": [],
+                    "level": 2,
+                    "name": "b",
+                    "parameters": [],
+                    "children": []
+                }],
+                inactive: ["b"],
+                parameters: [{
+                    "description": "If specified only the blocks named will be visited and made active",
+                    "start": [2, 0], "end": [2, 18],
+                    "name": "active", "value": "a c"
+                }],
+            }],
+            errors: [{
+                "row": 2, "columns": [0, 18],
+                "msg": "subblock specified in active parameter value not found: c"
+            }],
             edits: []
         });
     });

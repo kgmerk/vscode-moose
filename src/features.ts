@@ -212,12 +212,12 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
         let symbol = new vscode.DocumentSymbol(params.name, params.detail, kind, params.range, params.selectionRange);
         return symbol;
     }
-    private recurseSymbols(item: OutlineBlockItem, symbol: vscode.DocumentSymbol) {
+    private recurseOutlineBlocks(item: OutlineBlockItem, symbol: vscode.DocumentSymbol) {
         let children: vscode.DocumentSymbol[] = [];
         for (let childItem of item.children) {
             let childSymbol = this.createSymbol(childItem);
             if (childSymbol) {
-                this.recurseSymbols(childItem, childSymbol);
+                this.recurseOutlineBlocks(childItem, childSymbol);
                 children.push(childSymbol);
             }
         }
@@ -244,7 +244,7 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
         for (let item of outline) {
             symbol = this.createSymbol(item);
             if (symbol) {
-                this.recurseSymbols(item, symbol);
+                this.recurseOutlineBlocks(item, symbol);
                 symbols.push(symbol);
             }
         }
@@ -289,12 +289,13 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let message: string;
         let range: vscode.Range;
         this.mooseDoc.setDoc(new VSDoc(document));
-        let { errors, edits } = await this.mooseDoc.assessOutline();
+        let { outline, errors, edits } = await this.mooseDoc.assessOutline();
         for (let error of errors) {
             severity = vscode.DiagnosticSeverity.Error;
             message = error.msg;
             range = new vscode.Range(new vscode.Position(error.row, error.columns[0]), new vscode.Position(error.row, error.columns[1]));
             diagnostic = new vscode.Diagnostic(range, message, severity);
+            diagnostic.source = "moose";
             diagnostics.push(diagnostic);
         }
         for (let edit of edits) {
@@ -304,9 +305,29 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
                 new vscode.Position(...edit.start), 
                 new vscode.Position(...edit.end));
             diagnostic = new vscode.Diagnostic(range, message, severity);
+            diagnostic.source = "moose";
             diagnostics.push(diagnostic);
         }
+        for (let block of outline) {
+            this.recurseChildren(block, diagnostics);
+        }
         this.diagnosticCollection.set(document.uri, diagnostics);
+    }
+    private recurseChildren(block: OutlineBlockItem, diagnostics: vscode.Diagnostic[]) {
+        for (let child of block.children) {
+            if (block.inactive.indexOf(child.name) >= 0 && child.end !== null) {
+                let severity = vscode.DiagnosticSeverity.Hint;
+                let message = "inactive block";   
+                let range = new vscode.Range(
+                    new vscode.Position(...child.start), 
+                    new vscode.Position(...child.end));
+                let diagnostic = new vscode.Diagnostic(range, message, severity);
+                diagnostic.tags = [vscode.DiagnosticTag.Unnecessary];
+                diagnostic.source = "moose";
+                diagnostics.push(diagnostic);                    
+            }
+            this.recurseChildren(child, diagnostics);
+        }        
     }
     public provideCodeActions(document: vscode.TextDocument, range: vscode.Range, context: vscode.CodeActionContext, token: vscode.CancellationToken): vscode.CodeAction[] {
         this.mooseDoc.setDoc(new VSDoc(document));

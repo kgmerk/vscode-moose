@@ -58,6 +58,7 @@ export interface OutlineParamItem {
     end: [number, number];
     name: string;
     description: string;
+    value: string | null;
 }
 export interface OutlineBlockItem {
     start: [number, number];
@@ -1127,7 +1128,7 @@ export class MooseDoc {
                 msg: 'final block(s) unclosed',
                 insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
             });
-            MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row, "");
+            MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row, "", syntaxErrors);
         }
         emptyLines = this.detectBlankLines(emptyLines, row, textEdits, line);
 
@@ -1165,7 +1166,7 @@ export class MooseDoc {
                 msg: 'block opened before previous one closed',
                 insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
             });
-            MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line);
+            MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line, syntaxErrors);
             level = 0;
         }
 
@@ -1215,7 +1216,7 @@ export class MooseDoc {
                 msg: 'closed parent block before closing children',
                 insertionBefore: "[../]\n".repeat(currLevel - 1)
             });
-            MooseDoc.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line);
+            MooseDoc.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line, syntaxErrors);
         }
         // check a main block has been opened
         else if (currLevel < 1) {
@@ -1225,7 +1226,7 @@ export class MooseDoc {
                 insertionBefore: "[${1:name}]\n"
             });
         }
-        MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row, line);
+        MooseDoc.closeFinalBlockAndChildren(outlineItems, 1, row, line, syntaxErrors);
     }
 
     private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
@@ -1297,15 +1298,20 @@ export class MooseDoc {
             });
         }
         else {
-            let levelsClosed = MooseDoc.closeFinalBlockAndChildren(outlineItems, currLevel, row, line);
+            let levelsClosed = MooseDoc.closeFinalBlockAndChildren(outlineItems, currLevel, row, line, syntaxErrors);
             currLevel = currLevel - levelsClosed;
         }
         return currLevel;
     }
 
     private async assessParameter(line: string, outlineItems: OutlineBlockItem[], syntaxErrors: SyntaxError[], row: number, currLevel: number) {
-        let paramNames = /^\s*([_a-zA-Z0-9]+)\s*=.*$/.exec(line);
-        let paramName = paramNames !== null ? paramNames[1] : '';
+
+        let nameRegex = /^\s*([_a-zA-Z0-9]+)\s*=.*/.exec(line);
+        let paramName = nameRegex !== null ? nameRegex[1] : '';
+
+        let valueRegex = /^\s*[_a-zA-Z0-9]+\s*=\s*[\'\"]*([^#\'\"]+)/.exec(line);
+        let paramValue = valueRegex !== null ? valueRegex[1].trim() === "" ? null : valueRegex[1].trim() : null;  // TODO this won't capture values which go over multiple lines 
+
         if (outlineItems.map(o => o.name).indexOf(paramName) !== -1) {
             syntaxErrors.push({
                 row: row, columns: [0, line.length],
@@ -1339,12 +1345,86 @@ export class MooseDoc {
                 description: descript,
                 start: [row, line.search(/[^/s]/)],
                 end: [row, line.length],
+                value: paramValue
             });
         }
 
     }
 
+    /**
+     * close a single block, updating its end row and active children
+     */
+    private static closeSingleBlock(block: OutlineBlockItem, endPos: [number, number]) {
 
+        let syntaxErrors: SyntaxError[] = [];
+
+        // update end row
+        block.end = endPos;
+        // check if active / inactive parameters are present, and derive inactive children
+        let childNames = block.children.map(child => child.name);
+        let inactiveChildren: string[] = [];
+        let activeValues: string[] | null = null;
+        let activePos: [number, [number, number]] | null = null;
+        let inactiveValues: string[] | null = null;
+        let inactivePos: [number, [number, number]] | null = null;
+        for (let param of block.parameters) {
+            if (param.name === "active" && param.value) {
+                activePos = [param.start[0], [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]]];
+                if (param.value.search("__all__") < 0) {
+                    activeValues = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings
+                }
+            } else if (param.name === "inactive" && param.value) {
+                inactivePos = [param.start[0], [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]]];
+                inactiveValues = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings                
+            }
+        }
+        if (activeValues && inactiveValues) {
+            // TODO does active override inactive or visa-versa, or are they not both allowed
+            let error: SyntaxError = {
+                row: block.start[0],
+                columns: [0, block.start[1]],
+                msg: 'active and inactive parameters are not allowed in the same block'
+            };
+            syntaxErrors.push(error);
+        } else if (activeValues) {
+            for (let value of activeValues) {
+                if (childNames.indexOf(value) < 0 && activePos) {
+                    let error: SyntaxError = {
+                        row: activePos[0],
+                        columns: activePos[1],
+                        msg: 'subblock specified in active parameter value not found: ' + value
+                    };
+                    syntaxErrors.push(error);
+                }
+            }
+            for (let name of childNames) {
+                if (activeValues.indexOf(name) < 0) {
+                    inactiveChildren.push(name);
+                }
+            }
+        } else if (inactiveValues) {
+            for (let value of inactiveValues) {
+                if (childNames.indexOf(value) < 0 && inactivePos) {
+                    let error: SyntaxError = {
+                        row: inactivePos[0],
+                        columns: inactivePos[1],
+                        msg: 'subblock specified in inactive parameter value not found: ' + value
+                    };
+                    syntaxErrors.push(error);
+                }
+            }
+            for (let name of childNames) {
+                if (inactiveValues.indexOf(name) >= 0) {
+                    inactiveChildren.push(name);
+                }
+            }
+        }
+        block.inactive = inactiveChildren;
+
+        // TODO check all required parameters are present (but issue with parameters specified in globalparams)
+
+        return syntaxErrors;
+    }
 
     /** Close the final block, at a particular level, 
      * and update its item with details of the end row etc.
@@ -1354,17 +1434,18 @@ export class MooseDoc {
      * @param blockLevel the level of the block to close
      * @param row the row number of the closure
      * @param length the length of the closure line
+     * @param syntaxErrors the list of errors to add to
      * @returns number of levels closed
      */
     private static closeFinalBlockAndChildren(outline: OutlineBlockItem[],
-        blockLevel: number, row: number, line: string) {
+        blockLevel: number, row: number, line: string, syntaxErrors: SyntaxError[]) {
         let levelsClosed = 0;
 
         // if no blocks
         if (outline.length === 0) {
             return levelsClosed;
         }
-        
+
         // navigate to required initial block level
         let item: OutlineBlockItem = outline[outline.length - 1];
         for (let l = 1; l < blockLevel; l++) {
@@ -1379,7 +1460,7 @@ export class MooseDoc {
             // throw Error('block already closed');
         } else {
             let closePos = line.search(/\]/);
-            item.end = [row, closePos >= 0 ? closePos + 1 : 0];
+            syntaxErrors.push(...MooseDoc.closeSingleBlock(item, [row, closePos >= 0 ? closePos + 1 : 0]));
             levelsClosed++;
         }
 
@@ -1387,13 +1468,10 @@ export class MooseDoc {
         while (item.children.length > 0) {
             item = item.children[item.children.length - 1];
             if (item.end === null) {
-                item.end = [row, 0];
+                syntaxErrors.push(...MooseDoc.closeSingleBlock(item, [row, 0]));
                 levelsClosed++;
             }
         }
-
-        // TODO check all required parameters are present (on closing sub-block/block)
-
         return levelsClosed;
     }
 
