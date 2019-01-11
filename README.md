@@ -120,7 +120,7 @@ Fixed some bugs:
 
 ### 0.8.1
 
-- added autosompletion for values of active/inactive parameters
+- added autocompletion for values of active/inactive parameters
 
 ## Acknowledgements
 
