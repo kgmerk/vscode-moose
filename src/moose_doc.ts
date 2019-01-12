@@ -184,10 +184,19 @@ export class MooseDoc {
 
     }
 
-    private async findValueNode(word: string, paramName: string, paramsList: moosedb.ParamNode[], valuePath: string[]) {
+    /** find the node and path of the variable which the value is referencing
+     * 
+     * @param value the value to search for
+     * @param paramName the parameter which it represents
+     * @param valuePath the path to the value
+     * @param explicitType the type of the sub-block
+     */
+    private async findValueReference(value: string, paramName: string, valuePath: string[], explicitType: string | null = null) {
 
         let node: ValueNode | null = null;
         let configPath: string[] | null = null;
+
+        let paramsList = await this.syntaxdb.fetchParameterList(valuePath, explicitType);
 
         for (let param of paramsList) {
             if (param.name === paramName) {
@@ -225,8 +234,8 @@ export class MooseDoc {
 
                 if (blockNames) {
                     for (let blockName of blockNames) {
-                        for (let { name, row } of this.yieldSubBlockList(blockName, [])) {
-                            if (name === word) {
+                        for (let { name, row } of this.yieldSubBlockList([blockName])) {
+                            if (name === value) {
                                 // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
                                 configPath = [blockName, name];
                                 node = {
@@ -244,7 +253,7 @@ export class MooseDoc {
                     // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
                     // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
                     for (let { name, position, block, type } of this.yieldMaterialNameList()) {
-                        if (name === word) {
+                        if (name === value) {
                             configPath = ["Materials", block, type, name];
                             node = {
                                 description: "Referenced Material",
@@ -255,7 +264,7 @@ export class MooseDoc {
                             // we want to try to find a default f_name
                             let paramList = await this.syntaxdb.fetchParameterList(["Materials", type]);
                             for (let mparam of paramList) {
-                                if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default === word) {
+                                if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default === value) {
                                     configPath = ["Materials", block, type, mparam.default];
                                     node = {
                                         description: "Referenced Material",
@@ -342,8 +351,7 @@ export class MooseDoc {
         } else if (!!(rmatch = /^\s*([^\s#=\]]+)\s*=.*/.exec(line))) {
             // value of parameter
             let paramName = rmatch[1];
-            let paramsList = await this.syntaxdb.fetchParameterList(configPath, explicitType);
-            let { pnode, path } = await this.findValueNode(word, paramName, paramsList, configPath);
+            let { pnode, path } = await this.findValueReference(word, paramName, configPath, explicitType);
             if (pnode && path) {
                 configPath = path;
                 node = pnode;
@@ -603,28 +611,26 @@ export class MooseDoc {
         return (match !== null) && (match[2] === type);
     }
 
-    /** yield sub-blocks of a given top block 
+    /** yield sub-blocks of a given set of top blocks
      *  
-     * @param blockName the name of the top block (e.g. Functions, PostProcessors)
-     * @param propertyNames named properties of the subblock to return
+     * @param blockNames the names of the top blocks (e.g. Functions, PostProcessors)
+     * @param gatherParameters if true, return parameters of the sub block
+     * @param paramFilter if not null return only these parameters of the subblock
      */
-    private * yieldSubBlockList(blockName: string, propertyNames: string[]) {
+    private * yieldSubBlockList(blockNames: string[],
+        gatherParameters: Boolean = false, paramFilter: string[] | null = null) {
         let row = 0;
         let level = 0;
-        // let subBlockList: { name: string, properties: { [index: string]: string } }[] = [];
+        let regexMatch: RegExpExecArray | null;
+        let mainBlock: string | null = null;
         let subBlock: {
+            mainBlock: string
             name: string,
             properties: { [index: string]: string },
             row: number
-        } = { name: '', properties: {}, row: 0 };
-        let filterList = Array.from(propertyNames).map(property => ({ name: property, re: new RegExp(`^\\s*${property}\\s*=\\s*([^\\s#=\\]]+)$`) }));
-
+        } = { mainBlock: '', name: '', properties: {}, row: 0 };
+ 
         let nlines = this.getDoc().getLineCount();
-
-        // find start of selected block
-        while (row < nlines && this.getDoc().getTextForRow(row).indexOf(`[${blockName}]`) === -1) {
-            row++;
-        }
 
         // parse contents of subBlock block
         while (true) {
@@ -632,16 +638,41 @@ export class MooseDoc {
             if (row >= nlines) {
                 break;
             }
-            let line = this.getDoc().getTextForRow(row);
-            if (blockCloseTop.test(line)) {
-                break;
-            }
 
+            let line = this.getDoc().getTextForRow(row);
+
+            // scan through document, until a required block is open
+            if (regexMatch = blockOpenTop.exec(line)) {
+                if (blockNames.indexOf(regexMatch[1]) >= 0) {
+                    // if the block has been found, remove it from the list
+                    while (blockNames.indexOf(regexMatch[1]) >= 0) {
+                        blockNames.splice(blockNames.indexOf(regexMatch[1]), 1);
+                    }
+                    mainBlock = regexMatch[1];
+                }
+            } else if (blockCloseTop.test(line)) {
+                mainBlock = null;
+                // if all blocks have been found, then finish
+                if (blockNames.length <= 0) {
+                    break;
+                }
+            }
+            if (mainBlock === null) {
+                // if we are not in a required block, then continue to next row
+                row++;
+                continue;
+            }
+            
             if (blockOpenOneLevel.test(line)) {
                 if (level === 0) {
                     let blockopen = blockOpenOneLevel.exec(line);
                     if (blockopen !== null) {
-                        subBlock = { name: blockopen[1], properties: {}, row: row };
+                        subBlock = {
+                            mainBlock: mainBlock,
+                            name: blockopen[1],
+                            properties: {},
+                            row: row
+                        };
                     }
                 }
                 level++;
@@ -649,43 +680,38 @@ export class MooseDoc {
                 level--;
                 if (level === 0) {
                     yield subBlock;
-                    // subBlockList.push(subBlock);
                 }
-            } else if (level === 1) {
-                for (let filter of Array.from(filterList)) {
-                    let match;
-                    if (match = filter.re.exec(line)) {
-                        subBlock.properties[filter.name] = match[1];
-                        break;
-                    }
+            } else if (level === 1 && gatherParameters && (regexMatch = otherParameter.exec(line))) {
+                let paramName = regexMatch[1];
+                if (paramFilter === null || paramFilter.indexOf(paramName) >= 0) {
+                    subBlock.properties[paramName] = regexMatch[2];
                 }
             }
 
             row++;
         }
 
-        // return subBlockList;
     }
 
-    /** yield names of material in the Materials block (if present)
+    /** yield names of materials in the Materials block (if present)
      *  
-     * @param blockName the name of the top block (e.g. Functions, PostProcessors)
-     * @param propertyNames named properties of the subblock to return
      */
     private * yieldMaterialNameList() {
-        let blockName = "Materials";
         let row = 0;
         let level = 0;
         let subBlockName: string | null = null;
         let subBlockType: string | null = null;
         let matNames: { name: string | null, block: string, position: Position, type: string }[] = [];
         let regExec: RegExpExecArray | null;
-        // let filterList = Array.from(propertyNames).map(property => ({ name: property, re: new RegExp(`^\\s*${property}\\s*=\\s*([^\\s#=\\]]+)$`) }));
 
         let nlines = this.getDoc().getLineCount();
 
-        // find start of selected block
-        while (row < nlines && this.getDoc().getTextForRow(row).indexOf(`[${blockName}]`) === -1) {
+        // find start of Materials block
+        while (row < nlines) {
+            let line = this.getDoc().getTextForRow(row);
+            if (/^\s*\[Materials\]/.test(line)) {
+                break;
+            }
             row++;
         }
         let subblockRow = row;
@@ -780,7 +806,7 @@ export class MooseDoc {
     private computeSubBlockNameCompletion(blockNames: string[], propertyNames: string[]) {
         let completions: Completion[] = [];
         for (let block of Array.from(blockNames)) {
-            for (let { name, properties } of Array.from(this.yieldSubBlockList(block, propertyNames))) {
+            for (let { name, properties } of Array.from(this.yieldSubBlockList([block], true, propertyNames))) {
                 let doc = [];
                 for (let propertyName of Array.from(propertyNames)) {
                     if (propertyName in properties) {
