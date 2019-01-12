@@ -117,9 +117,9 @@ export class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEdit
     public async provideOnTypeFormattingEdits(document: vscode.TextDocument, position: vscode.Position, ch: string, options: vscode.FormattingOptions, token: vscode.CancellationToken): Promise<vscode.TextEdit[]> {
         let vsEdits: vscode.TextEdit[] = [];
         let vsEdit: vscode.TextEdit;
-        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document), vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
 
-        let {errors} = await mooseDoc.assessDocument(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+        let {errors} = await mooseDoc.assessDocument();
         let row = position.line;
 
         for (let error of errors) {
@@ -151,10 +151,10 @@ export class DocumentFormattingEditProvider implements vscode.DocumentFormatting
     public async provideDocumentFormattingEdits(document: vscode.TextDocument): Promise<vscode.TextEdit[]> {
         let vsEdits: vscode.TextEdit[] = [];
         let vsEdit: vscode.TextEdit;
-        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
-
-        let { errors } = await mooseDoc.assessDocument(
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document),
             vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+
+        let { errors } = await mooseDoc.assessDocument();
 
         for (let error of errors) {
             if (error.type === "format" && error.correction) {
@@ -360,16 +360,45 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
             this.recurseChildren(child, diagnostics);
         }        
     }
-    public provideCodeActions(document: vscode.TextDocument, range: vscode.Range, context: vscode.CodeActionContext, token: vscode.CancellationToken): vscode.CodeAction[] {
-        // let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
+    public async provideCodeActions(document: vscode.TextDocument, range: vscode.Range, context: vscode.CodeActionContext, token: vscode.CancellationToken): Promise<vscode.CodeAction[]> {
+
         let commands: vscode.CodeAction[] = [];
-        // TODO create CodeActionsProvider
-        // let a = new vscode.CodeAction("hi");
-        // commands.push(a);
+
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
+        let { errors } = await mooseDoc.assessDocument();
+        let errornum = 1;
+        for (let error of errors) {
+            let errorStart = new vscode.Position(...error.start);
+            let errorEnd = new vscode.Position(...error.end);
+            // if ( range.start.isAfterOrEqual(errorStart) && range.end.isBeforeOrEqual(errorEnd) && error.correction) {
+            if ( range.start.line >= errorStart.line && range.end.line <= errorEnd.line && error.correction) {
+                if (error.correction.replace !== undefined) {
+                    let action = new vscode.CodeAction("[moose] fix "+error.type+" error "+String(errornum), vscode.CodeActionKind.QuickFix);
+                    let edit = new vscode.WorkspaceEdit();
+                    edit.replace(document.uri, new vscode.Range(errorStart, errorEnd), error.correction.replace);
+                    action.edit = edit;
+                    commands.push(action);
+                    errornum++;                    
+                } else if (error.correction.insertionBefore !== undefined) {
+                    let action = new vscode.CodeAction("[moose] fix "+error.type+" error "+String(errornum), vscode.CodeActionKind.QuickFix);
+                    let edit = new vscode.WorkspaceEdit();
+                    edit.insert(document.uri, errorStart, error.correction.insertionBefore);
+                    action.edit = edit;
+                    commands.push(action);
+                    errornum++;
+                } else if (error.correction.insertionAfter !== undefined) {
+                    let action = new vscode.CodeAction("[moose] fix "+error.type+" error "+String(errornum), vscode.CodeActionKind.QuickFix);
+                    let edit = new vscode.WorkspaceEdit();
+                    edit.insert(document.uri, errorEnd, error.correction.insertionAfter);
+                    action.edit = edit;
+                    commands.push(action);
+                    errornum++;
+                }
+            }
+        }
         return commands;
     }
     private runCodeAction(document: vscode.TextDocument, range: vscode.Range, message: string): any {
-        // TODO create runCodeAction
         // let edit = new vscode.WorkspaceEdit();
         // edit.replace(document.uri, range, newText);
         // return vscode.workspace.applyEdit(edit);

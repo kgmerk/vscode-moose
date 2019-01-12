@@ -475,7 +475,7 @@ suite("MooseDoc Tests", function () {
                 type: "closure",
                 start: [1, 0], end: [1, 2],
                 msg: "closed block before opening new one",
-                correction: { insertionBefore: "[${1:name}]\n" }
+                correction: { }
             },
             {
                 type: "format",
@@ -487,7 +487,7 @@ suite("MooseDoc Tests", function () {
                 type: "dbcheck",
                 start: [3, 4], end: [3, 10],
                 msg: "required parameter(s) \"type\" not present in block: Kernels/v1",
-                correction: { insertionAfter: "\ntype = \n" }
+                correction: { insertionAfter: "\n        type = " }
             },
             {
                 type: "closure",
@@ -510,7 +510,7 @@ suite("MooseDoc Tests", function () {
                 type: "dbcheck",
                 start: [7, 4], end: [7, 15],
                 msg: "required parameter(s) \"gamma, v, variable\" not present in block: Kernels/akernel/ACBarrierFunction",
-                correction: { insertionAfter: "\ngamma = \nv = \nvariable = \n" }
+                correction: { insertionAfter: "\n        gamma = \n        v = \n        variable = " }
             },
             {
                 type: "format",

@@ -122,17 +122,20 @@ let blockCloseOneLevel = /^\s*\[\.\.\/\]/;
  * and requires only a document object which provides a defined interface
  * 
  * @param doc the document object
- * @param syntaxdb
+ * @param syntaxdb the object containing the syntax database
+ * @param indentLength the number of spaces per indent
  * 
  */
 export class MooseDoc {
 
     private syntaxdb: moosedb.MooseSyntaxDB;
     private doc: Document | null;
+    public indentLength: number;
 
-    constructor(syntaxdb: moosedb.MooseSyntaxDB, doc: Document | null = null) {
+    constructor(syntaxdb: moosedb.MooseSyntaxDB, doc: Document | null = null, indentLength: number = 4) {
         this.doc = doc;
         this.syntaxdb = syntaxdb;
+        this.indentLength = indentLength
     }
 
     public setDoc(doc: Document) {
@@ -1113,10 +1116,8 @@ export class MooseDoc {
      * - **outline**: a heirarchical outline of the the documents blocks and subblocks
      * - **errors**: a list of syntactical errors
      * 
-     * @param indentLength the number of spaces per indent
-     * 
      */
-    public async assessDocument(indentLength: number = 4) {
+    public async assessDocument() {
 
         let outlineItems: OutlineBlockItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
@@ -1173,13 +1174,13 @@ export class MooseDoc {
             // check all lines are at correct indentation level
             // TODO indent lines after parameter definitions (that are not just comments) by extra space == '<name> = '
             let firstChar = line.search(/[^\s]/);
-            if (firstChar >= 0 && firstChar !== indentLevel * indentLength) {
+            if (firstChar >= 0 && firstChar !== indentLevel * this.indentLength) {
                 syntaxErrors.push({
                     type: "format",
                     start: [row, 0],
                     end: [row, firstChar],
                     correction: {
-                        replace: " ".repeat(indentLevel * indentLength),
+                        replace: " ".repeat(indentLevel * this.indentLength),
                     },
                     msg: "wrong indentation",
                 });
@@ -1190,13 +1191,18 @@ export class MooseDoc {
         emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors);
         // check no blocks are left unclosed
         if (currLevel !== 0) {
+            let insert = "[]\n";
+            for (let i = 1; i < currLevel; i++){
+                insert = " ".repeat(this.indentLength*i) + "[../]\n" + insert;
+            }
             syntaxErrors.push({
                 type: "closure",
                 start: [row, 0],
                 end: [row, line.length],
                 msg: 'final block(s) unclosed',
                 correction: {
-                    insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
+                    // insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
+                    insertionAfter: insert
                 }
             });
             await this.closeFinalBlockAndChildren(outlineItems, 1, row, "", syntaxErrors, globalParamDict);
@@ -1235,13 +1241,18 @@ export class MooseDoc {
 
         // test we are not already in a top block
         if (level > 0) {
+            let insert = "[]\n";
+            for (let i = 1; i < level; i++){
+                insert = " ".repeat(this.indentLength*i) + "[../]\n" + insert;
+            }
             syntaxErrors.push({
                 type: "closure",
                 start: [row, 0],
                 end: [row, line.length],
                 msg: 'block opened before previous one closed',
                 correction: {
-                    insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
+                    // insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
+                    insertionBefore: insert
                 }
             });
             await this.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line, syntaxErrors, globalParamDict);
@@ -1280,13 +1291,18 @@ export class MooseDoc {
 
         // check all sub-blocks have been closed
         if (currLevel > 1) {
+            let insert = "";
+            for (let i = 1; i < currLevel; i++){
+                insert = " ".repeat(this.indentLength*i) + "[../]\n" + insert;
+            }
             syntaxErrors.push({
                 type: "closure",
                 start: [row, 0],
                 end: [row, line.length],
                 msg: 'closed parent block before closing children',
                 correction: {
-                    insertionBefore: "[../]\n".repeat(currLevel - 1)
+                    // insertionBefore: "[../]\n".repeat(currLevel - 1)
+                    insertionBefore: insert
                 }
             });
             await this.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line, syntaxErrors, globalParamDict);
@@ -1299,7 +1315,7 @@ export class MooseDoc {
                 end: [row, line.length],
                 msg: 'closed block before opening new one',
                 correction: {
-                    insertionBefore: "[${1:name}]\n"
+                    // insertionBefore: "[${1:name}\n]" // TODO correct with snippets
                 }
             });
         }
@@ -1318,7 +1334,7 @@ export class MooseDoc {
                 end: [row, line.length],
                 msg: 'opening sub-block before main block open',
                 correction: {
-                    insertionBefore: "[${1:name}]\n"
+                    // insertionBefore: "[${1:name}]\n" // TODO correct with snippets
                 }
             });
             currLevel = 1;
@@ -1398,7 +1414,7 @@ export class MooseDoc {
     /**
      * close a single block, updating its end row and active children
      */
-    private async closeSingleBlock(block: OutlineBlockItem, endPos: [number, number], parentPath: string[], globalParamDict: { [index: string]: string }) {
+    private async closeSingleBlock(block: OutlineBlockItem, endPos: [number, number], parentPath: string[], globalParamDict: { [index: string]: string }, ) {
 
         let syntaxErrors: SyntaxError[] = [];
 
@@ -1574,6 +1590,7 @@ export class MooseDoc {
                     }
                 }
                 if (missingParams.length > 0) {
+                    let indent = " ".repeat(block.level * this.indentLength);
                     let error: SyntaxError = {
                         type: "dbcheck",
                         start: block.start,
@@ -1581,7 +1598,7 @@ export class MooseDoc {
                         block.start[1] + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
                         msg: 'required parameter(s) "' + missingParams.join(", ") + '" not present in block: ' + stringPath,
                         correction: {
-                            insertionAfter: "\n" + missingParams.join(" = \n") + " = \n" // TODO need to include indentation for each param
+                            insertionAfter: "\n" + indent + missingParams.join(" = \n" + indent) + " = "
                         }
                     };
                     syntaxErrors.push(error);
