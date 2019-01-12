@@ -75,19 +75,16 @@ export interface SyntaxError {
     // duplication = duplication of block or parameter names
     // refcheck = internal reference checks (e.g. block or variable not found)
     // dbcheck =  checks against the syntax database (e.g. block or parameter not found)
-    type: "closure" | "duplication" | "refcheck" | "dbcheck";
-    row: number;
-    columns: [number, number];
-    msg: string;
-    insertionBefore?: string;
-    insertionAfter?: string;
-}
-export interface textEdit {
-    type: "indent" | "blank-lines";
+    // format = formatting warnings
+    type: "closure" | "duplication" | "refcheck" | "dbcheck" | "format";
     start: [number, number];
     end: [number, number];
-    text: string;
     msg: string;
+    correction?: {
+        insertionBefore?: string;
+        insertionAfter?: string;
+        replace?: string;
+    };
 }
 
 /** an interface to describe a value in the document */
@@ -1088,15 +1085,14 @@ export class MooseDoc {
         return completions;
     }
 
-    // TODO issue when sub-block named the same as a type should include a warning if this is the case
+    // TODO issue when sub-block named the same as a type, should include a warning if this is the case
 
     /** assess the outline of the whole document
      * 
      * Returns an object containing:
      * 
      * - **outline**: a heirarchical outline of the the documents blocks and subblocks
-     * - **edits**: a list of ranges in the document where formatting edits are reccomended (and what those edits are)
-     * - **errors**: a list of ranges in the document where there are syntactical errors (and what those erros are)
+     * - **errors**: a list of syntactical errors
      * 
      * @param indentLength the number of spaces per indent
      * 
@@ -1105,7 +1101,6 @@ export class MooseDoc {
 
         let outlineItems: OutlineBlockItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
-        let textEdits: textEdit[] = [];
 
         let line: string = "";
         let currLevel = 0;
@@ -1116,14 +1111,14 @@ export class MooseDoc {
         try {
             await this.syntaxdb.retrieveSyntaxNodes();
         } catch (err) {
-            // return { outline: outlineItems, errors: syntaxErrors, edits: textEdits };
+            // return { outline: outlineItems, errors: syntaxErrors };
         }
 
         for (var row = 0; row < this.getDoc().getLineCount(); row++) {
 
             line = this.getDoc().getTextForRow(row);
 
-            emptyLines = this.detectBlankLines(emptyLines, row, textEdits, line);
+            emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors, line);
 
             if (blockOpenTop.test(line)) {
                 await this.assessMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
@@ -1150,46 +1145,53 @@ export class MooseDoc {
             // TODO indent lines after parameter definitions (that are not just comments) by extra space == '<name> = '
             let firstChar = line.search(/[^\s]/);
             if (firstChar >= 0 && firstChar !== indentLevel * indentLength) {
-                textEdits.push({
-                    type: "indent",
+                syntaxErrors.push({
+                    type: "format",
                     start: [row, 0],
                     end: [row, firstChar],
-                    text: " ".repeat(indentLevel * indentLength),
+                    correction: {
+                        replace: " ".repeat(indentLevel * indentLength),
+                    },
                     msg: "wrong indentation",
                 });
             }
 
         }
 
-        emptyLines = this.detectBlankLines(emptyLines, row, textEdits);
+        emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors);
         // check no blocks are left unclosed
         if (currLevel !== 0) {
             syntaxErrors.push({
                 type: "closure",
-                row: row, columns: [0, line.length],
+                start: [row, 0],
+                end: [row, line.length],
                 msg: 'final block(s) unclosed',
-                insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
+                correction: {
+                    insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
+                }
             });
             await this.closeFinalBlockAndChildren(outlineItems, 1, row, "", syntaxErrors);
         }
-        emptyLines = this.detectBlankLines(emptyLines, row, textEdits, line);
+        emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors, line);
 
-        return { outline: outlineItems, errors: syntaxErrors, edits: textEdits };
+        return { outline: outlineItems, errors: syntaxErrors };
     }
 
     /** detect multiple blank lines */
-    private detectBlankLines(emptyLines: number[], row: number, textEdits: textEdit[], line: string | null = null) {
+    private detectBlankLines(emptyLines: number[], row: number, syntaxErrors: SyntaxError[], line: string | null = null) {
         if (line !== null && emptyLine.test(line)) {
             emptyLines.push(row);
         }
         else {
             if (emptyLines.length > 1) {
-                textEdits.push({
-                    type: "blank-lines",
+                syntaxErrors.push({
+                    type: "format",
                     start: [emptyLines[0], 0],
                     end: [row - 1, line === null ? 0 : line.length],
-                    text: "",
                     msg: "multiple blank lines",
+                    correction: {
+                        replace: ""
+                    }
                 });
             }
             emptyLines = [];
@@ -1205,9 +1207,12 @@ export class MooseDoc {
         if (level > 0) {
             syntaxErrors.push({
                 type: "closure",
-                row: row, columns: [0, line.length],
+                start: [row, 0],
+                end: [row, line.length],
                 msg: 'block opened before previous one closed',
-                insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
+                correction: {
+                    insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
+                }
             });
             await this.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line, syntaxErrors);
             level = 0;
@@ -1219,7 +1224,8 @@ export class MooseDoc {
         if (outlineItems.map(o => o.name).indexOf(blockName) !== -1) {
             syntaxErrors.push({
                 type: "duplication",
-                row: row, columns: [0, line.length],
+                start: [row, 0],
+                end: [row, line.length],
                 msg: 'duplicate block name'
             });
         }
@@ -1245,9 +1251,12 @@ export class MooseDoc {
         if (currLevel > 1) {
             syntaxErrors.push({
                 type: "closure",
-                row: row, columns: [0, line.length],
+                start: [row, 0],
+                end: [row, line.length],
                 msg: 'closed parent block before closing children',
-                insertionBefore: "[../]\n".repeat(currLevel - 1)
+                correction: {
+                    insertionBefore: "[../]\n".repeat(currLevel - 1)
+                }
             });
             await this.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line, syntaxErrors);
         }
@@ -1255,9 +1264,12 @@ export class MooseDoc {
         else if (currLevel < 1) {
             syntaxErrors.push({
                 type: "closure",
-                row: row, columns: [0, line.length],
+                start: [row, 0],
+                end: [row, line.length],
                 msg: 'closed block before opening new one',
-                insertionBefore: "[${1:name}]\n"
+                correction: {
+                    insertionBefore: "[${1:name}]\n"
+                }
             });
         }
         await this.closeFinalBlockAndChildren(outlineItems, 1, row, line, syntaxErrors);
@@ -1271,9 +1283,12 @@ export class MooseDoc {
         if (currLevel === 0) {
             syntaxErrors.push({
                 type: "closure",
-                row: row, columns: [0, line.length],
+                start: [row, 0],
+                end: [row, line.length],
                 msg: 'opening sub-block before main block open',
-                insertionBefore: "[${1:name}]\n"
+                correction: {
+                    insertionBefore: "[${1:name}]\n"
+                }
             });
             currLevel = 1;
         }
@@ -1307,14 +1322,16 @@ export class MooseDoc {
         if (currLevel === 0) {
             syntaxErrors.push({
                 type: "closure",
-                row: row, columns: [0, line.length],
+                start: [row, 0],
+                end: [row, line.length],
                 msg: 'closing sub-block before opening main block',
             });
         }
         else if (currLevel === 1) {
             syntaxErrors.push({
                 type: "closure",
-                row: row, columns: [0, line.length],
+                start: [row, 0],
+                end: [row, line.length],
                 msg: 'closing sub-block before opening one',
             });
         }
@@ -1364,7 +1381,8 @@ export class MooseDoc {
                 // add syntax error for duplication
                 syntaxErrors.push({
                     type: "duplication",
-                    row: child.start[0], columns: [child.start[1], child.end ? ((child.start[0] === child.end[0]) ? child.end[1] : child.end[0]) : child.start[1]],
+                    start: child.start,
+                    end: [child.start[0], child.start[1]+("[./"+child.name+"]").length],
                     msg: 'duplicate block name'
                 });
             } else {
@@ -1380,7 +1398,8 @@ export class MooseDoc {
                 // add syntax error for duplication
                 syntaxErrors.push({
                     type: "duplication",
-                    row: param.start[0], columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
+                    start: param.start,
+                    end: param.end,
                     msg: 'duplicate parameter name'
                 });
             } else {
@@ -1393,8 +1412,9 @@ export class MooseDoc {
             // TODO does active override inactive or visa-versa, or are they not both allowed
             let error: SyntaxError = {
                 type: "duplication",
-                row: block.start[0],
-                columns: [0, block.start[1]],
+                start: block.start,
+                end: [block.start[0],
+                      block.start[1] + (block.level>1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
                 msg: 'active and inactive parameters are not allowed in the same block'
             };
             syntaxErrors.push(error);
@@ -1408,8 +1428,8 @@ export class MooseDoc {
                     if (!(activeBlock in childDict)) {
                         let error: SyntaxError = {
                             type: "refcheck",
-                            row: param.start[0],
-                            columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
+                            start: param.start,
+                            end: param.end,
                             msg: 'subblock specified in active parameter value not found: ' + activeBlock
                         };
                         syntaxErrors.push(error);
@@ -1434,8 +1454,8 @@ export class MooseDoc {
                     if (!(inactiveBlock in childDict)) {
                         let error: SyntaxError = {
                             type: "refcheck",
-                            row: param.start[0],
-                            columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
+                            start: param.start,
+                            end: param.end,
                             msg: 'subblock specified in inactive parameter value not found: ' + inactiveBlock
                         };
                         syntaxErrors.push(error);
@@ -1469,8 +1489,9 @@ export class MooseDoc {
         if (blockMatch === null) {
             let error: SyntaxError = {
                 type: "dbcheck",
-                row: block.start[0],
-                columns: [block.start[1], block.start[1]],
+                start: block.start,
+                end: [block.start[0],
+                      block.start[1] + (block.level>1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
                 msg: 'block path was not found in database: ' + configPath.join("/")
             };
             syntaxErrors.push(error);
@@ -1501,8 +1522,8 @@ export class MooseDoc {
                             let stringPath = (typeName !== null) ? configPath.concat([typeName]).join("/") : configPath.join("/");
                             let error: SyntaxError = {
                                 type: "dbcheck",
-                                row: param.start[0],
-                                columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
+                                start: param.start,
+                                end: param.end,
                                 msg: 'parameter name "'+pname+'" was not found for this block in database: ' + stringPath
                             };
                             syntaxErrors.push(error);

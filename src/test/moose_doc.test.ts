@@ -473,43 +473,45 @@ suite("MooseDoc Tests", function () {
             }],
             errors: [{
                 type: "closure",
-                row: 1, columns: [0, 2],
+                start: [1, 0], end: [1, 2],
                 msg: "closed block before opening new one",
-                insertionBefore: "[${1:name}]\n"
+                correction: {insertionBefore: "[${1:name}]\n"}
+            },
+            {
+                type: "format",
+                msg: "wrong indentation", 
+                start: [2, 0], end: [2, 1],
+                correction: { replace: "" }
             },
             {
                 type: "closure",
-                row: 6, columns: [0, 9],
+                start: [6, 0], end: [6, 9],
                 msg: "block opened before previous one closed",
-                insertionBefore: "[]\n"
+                correction: { insertionBefore: "[]\n" }
             },
             {
                 type: "duplication",
-                row: 6, columns: [0, 9],
+                start: [6, 0], end: [6, 9],
                 msg: "duplicate block name"
             },
             {
+                type: "format",
+                msg: "wrong indentation",
+                start: [8, 0], end: [8, 1],
+                correction: { replace: "        " }
+            },
+            {
+                type: "format",
+                msg: "multiple blank lines",
+                start: [11, 0], end: [13, 0],
+                correction: { replace: "" }
+            },
+            {
                 type: "closure",
-                row: 14, columns: [0, 8],
+                start: [14, 0], end: [14, 8],
                 msg: "final block(s) unclosed",
-                insertionAfter: "[]\n"
-            }],
-            edits: [
-                {
-                    msg: "wrong indentation", type: "indent",
-                    start: [2, 0], end: [2, 1],
-                    text: ""
-                },
-                {
-                    msg: "wrong indentation", type: "indent",
-                    start: [8, 0], end: [8, 1],
-                    text: "        "
-                },
-                {
-                    msg: "multiple blank lines", type: "blank-lines",
-                    start: [11, 0], end: [13, 0],
-                    text: ""
-                }
+                correction: { insertionAfter: "[]\n" }
+            }
             ]
         });
     });
@@ -584,21 +586,20 @@ suite("MooseDoc Tests", function () {
             "errors": [
                 {
                     "type": "duplication",
-                    "row": 4, "columns": [8, 16],
+                    "start": [4, 8], "end": [4, 16],
                     "msg": "duplicate parameter name",
                 },
                 {
                     "type": "duplication",
-                    "row": 6, "columns": [4, 7],
+                    "start": [6, 4], "end": [6, 9],
                     "msg": "duplicate block name",
                 },
                 {
                     "type": "duplication",
-                    "row": 9, "columns": [0, 9],
+                    "start": [9, 0], "end": [9, 9],
                     "msg": "duplicate block name",
                 }
-            ],
-            "edits": []
+            ]
         });
     });
 
@@ -628,9 +629,8 @@ suite("MooseDoc Tests", function () {
             errors: [{
                 "type": "dbcheck",
                 "msg": "parameter name \"a\" was not found for this block in database: Kernels",
-                "columns": [4, 9], "row": 2
-            }],
-            edits: []
+                "start": [2, 4], "end": [2, 9],
+            }]
         });
     });
 
@@ -653,8 +653,7 @@ suite("MooseDoc Tests", function () {
                 inactive: [],
                 parameters: [],
             }],
-            errors: [],
-            edits: []
+            errors: []
         });
     });
 
@@ -703,10 +702,9 @@ suite("MooseDoc Tests", function () {
             }],
             errors: [{
                 "type": "refcheck",
-                "row": 2, "columns": [4, 18],
+                "start": [2, 4], "end": [2, 18],
                 "msg": "subblock specified in active parameter value not found: c"
-            }],
-            edits: []
+            }]
         });
     });
 });

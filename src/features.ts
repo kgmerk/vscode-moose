@@ -119,17 +119,20 @@ export class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEdit
         let vsEdit: vscode.TextEdit;
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
 
-        let {edits} = await mooseDoc.assessOutline(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+        let {errors} = await mooseDoc.assessOutline(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
         let row = position.line;
 
-        for (let edit of edits){
-            if (row >= edit.start[0] && row <= edit.end[0] && edit.type === "indent"){
-                vsEdit = new vscode.TextEdit(
-                    new vscode.Range(
-                        new vscode.Position(...edit.start), 
-                        new vscode.Position(...edit.end)), 
-                        edit.text);
-                vsEdits.push(vsEdit);
+        for (let error of errors) {
+            if (error.type === "format" && error.correction) {
+                // only make single line format edits
+                if (error.start[0] === error.end[0] && error.start[0] === row && error.correction.replace !== undefined) {
+                    vsEdit = new vscode.TextEdit(
+                        new vscode.Range(
+                            new vscode.Position(...error.start),
+                            new vscode.Position(...error.end)),
+                        error.correction.replace);
+                    vsEdits.push(vsEdit);
+                }
             }
         }
 
@@ -150,16 +153,20 @@ export class DocumentFormattingEditProvider implements vscode.DocumentFormatting
         let vsEdit: vscode.TextEdit;
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
 
-        let { edits } = await mooseDoc.assessOutline(
+        let { errors } = await mooseDoc.assessOutline(
             vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
 
-        for (let edit of edits){
-            vsEdit = new vscode.TextEdit(
-                new vscode.Range(
-                    new vscode.Position(...edit.start), 
-                    new vscode.Position(...edit.end)), 
-                    edit.text);
-            vsEdits.push(vsEdit);
+        for (let error of errors) {
+            if (error.type === "format" && error.correction) {
+                if (error.correction.replace !== undefined) {
+                    vsEdit = new vscode.TextEdit(
+                        new vscode.Range(
+                            new vscode.Position(...error.start),
+                            new vscode.Position(...error.end)),
+                        error.correction.replace);
+                    vsEdits.push(vsEdit);
+                }
+            }
         }
 
         return vsEdits;
@@ -313,25 +320,20 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let message: string;
         let range: vscode.Range;
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
-        let { outline, errors, edits } = await mooseDoc.assessOutline();
+        let { outline, errors } = await mooseDoc.assessOutline();
         for (let error of errors) {
-            severity = vscode.DiagnosticSeverity.Error;
+            if (error.type === "format") {
+                severity = vscode.DiagnosticSeverity.Warning;
+            } else {
+                severity = vscode.DiagnosticSeverity.Error;
+            }
             message = error.msg;
-            range = new vscode.Range(new vscode.Position(error.row, error.columns[0]), new vscode.Position(error.row, error.columns[1]));
+            range = new vscode.Range(
+                new vscode.Position(...error.start),
+                new vscode.Position(...error.end));
             diagnostic = new vscode.Diagnostic(range, message, severity);
             diagnostic.source = "moose";
             diagnostic.code = error.type;
-            diagnostics.push(diagnostic);
-        }
-        for (let edit of edits) {
-            severity = vscode.DiagnosticSeverity.Warning;
-            message = edit.msg;
-            range = new vscode.Range(
-                new vscode.Position(...edit.start), 
-                new vscode.Position(...edit.end));
-            diagnostic = new vscode.Diagnostic(range, message, severity);
-            diagnostic.source = "moose";
-            diagnostic.code = edit.type;
             diagnostics.push(diagnostic);
         }
         for (let block of outline) {
