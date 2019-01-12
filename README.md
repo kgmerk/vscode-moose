@@ -14,7 +14,7 @@ This extension provides language support and IntelliSense for input files of MOO
 - Code-Folding
 - Outline Tree
 - Hover Definitions
-- [File Diagnostics](#file-diagnostics)
+- [File Diagnostics and Fixes](#file-diagnostics)
 - [Format Document](#auto-formatting)
 - Peek/GoTo Referenced Variable/Material Definitions
 - Peek/GoTo C++ Source Files
@@ -52,8 +52,12 @@ Files are diagnosed for multiple types of syntax and formatting errors:
 - `closure`: if block(s) have not been closed,
 - `duplication`: duplication of block or parameter names,
 - `refcheck`: internal reference checks (e.g. block or variable not found)
-- `dbcheck`: checks against the syntax database (e.g. block or parameter not found)
+- `dbcheck`: checks against the syntax database (e.g. block or parameter not found and required parameters missing)
 - `format`: formatting warnings, including bad indentation and multiple blank lines
+
+Some of these errors can be fixed by [Code Actions](https://code.visualstudio.com/docs/editor/refactoring#_code-actions-quick-fixes-and-refactorings):
+
+![code-action](images/codeaction.gif)
 
 Additionally, blocks which have been set as inactive (by the `active` or `inactive` parameters) will be rendered faded out:
 
@@ -131,6 +135,14 @@ Fixed some bugs:
 ### 0.8.2
 
 - added identification and fading of inactive blocks
+
+### 0.9.0
+
+- added error checking for missing required parameters
+- classified errors by type and allowed control of their reporting *via* settings
+- added CodeActions to provide errors corrections
+- fixed bug whereby assessing outline/errors would show for wrong document
+- general code refactoring
 
 ## Acknowledgements
 
