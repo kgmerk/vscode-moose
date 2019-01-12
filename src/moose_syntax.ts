@@ -629,13 +629,16 @@ export class MooseSyntaxDB {
      * @param basePath the required base path
      */
     public async getSubBlocks(basePath: string[] = []) {
-        // TODO strictly should use `./moose-app --syntax` output
 
         let data = await this.retrieveSyntaxNodes();
         let matchList: string[] = [];
 
         for (let node of data) {
             this.recurseSubBlocks(node, basePath, matchList);
+        }
+
+        if (basePath.length === 0) {
+            matchList.push("GlobalParams");
         }
 
         return matchList;

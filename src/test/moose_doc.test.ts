@@ -204,7 +204,7 @@ suite("MooseDoc Tests", function () {
         //     console.log(value);
         // });
         return expect(mdoc.findCompletions(cursor)
-        ).to.eventually.be.an('array').that.has.length(37).and.deep.include({
+        ).to.eventually.be.an('array').that.has.length(38).and.deep.include({
             kind: "block",
             insertText: {
                 type: "text",
@@ -407,7 +407,7 @@ suite("MooseDoc Tests", function () {
         ]);
     });
 
-    test("Outline (with closure/duplication errors and bad indentation)", function () {
+    test("Outline (with closure/duplication errors, missing required parameter, bad indentation)", function () {
         doc.text = `
 []
  [Kernels]  # a comment
@@ -425,7 +425,7 @@ suite("MooseDoc Tests", function () {
         // mdoc.assessOutline().then(value => {
         //     console.log(value);
         // });
-        return expect(mdoc.assessOutline()).to.eventually.eql({
+        return expect(mdoc.assessDocument()).to.eventually.eql({
             outline: [{
                 name: "Kernels",
                 description: "",
@@ -475,13 +475,19 @@ suite("MooseDoc Tests", function () {
                 type: "closure",
                 start: [1, 0], end: [1, 2],
                 msg: "closed block before opening new one",
-                correction: {insertionBefore: "[${1:name}]\n"}
+                correction: { insertionBefore: "[${1:name}]\n" }
             },
             {
                 type: "format",
-                msg: "wrong indentation", 
+                msg: "wrong indentation",
                 start: [2, 0], end: [2, 1],
                 correction: { replace: "" }
+            },
+            {
+                type: "dbcheck",
+                start: [3, 4], end: [3, 10],
+                msg: "required parameter(s) \"type\" not present in block: Kernels/v1",
+                correction: { insertionAfter: "\ntype = \n" }
             },
             {
                 type: "closure",
@@ -499,6 +505,12 @@ suite("MooseDoc Tests", function () {
                 msg: "wrong indentation",
                 start: [8, 0], end: [8, 1],
                 correction: { replace: "        " }
+            },
+            {
+                type: "dbcheck",
+                start: [7, 4], end: [7, 15],
+                msg: "required parameter(s) \"gamma, v, variable\" not present in block: Kernels/akernel/ACBarrierFunction",
+                correction: { insertionAfter: "\ngamma = \nv = \nvariable = \n" }
             },
             {
                 type: "format",
@@ -524,6 +536,7 @@ suite("MooseDoc Tests", function () {
         type = c
     [../]
     [./a]
+        type = a
     [../]
 []
 [Kernels]
@@ -531,12 +544,12 @@ suite("MooseDoc Tests", function () {
         // mdoc.assessOutline().then(value => {
         //     console.log(value);
         // });
-        return expect(mdoc.assessOutline()).to.eventually.eql({
+        return expect(mdoc.assessDocument()).to.eventually.eql({
             "outline": [
                 {
                     "name": "Kernels", "level": 1,
                     "description": "",
-                    "start": [1, 0], "end": [8, 2],
+                    "start": [1, 0], "end": [9, 2],
                     "inactive": [],
                     "parameters": [],
                     "children": [
@@ -565,11 +578,16 @@ suite("MooseDoc Tests", function () {
                         {
                             "children": [],
                             "description": "",
-                            "start": [6, 4], "end": [7, 9],
+                            "start": [6, 4], "end": [8, 9],
                             "inactive": [],
                             "level": 2,
                             "name": "a",
-                            "parameters": [],
+                            "parameters": [{
+                                "description": "A string representing the Moose Object that will be built by this Action\n",
+                                "start": [7, 8], "end": [7, 16],
+                                "name": "type",
+                                "value": "a"
+                            }],
                         }
                     ],
 
@@ -577,7 +595,7 @@ suite("MooseDoc Tests", function () {
                 {
                     "name": "Kernels", "level": 1,
                     "description": "",
-                    "start": [9, 0], "end": [10, 2],
+                    "start": [10, 0], "end": [11, 2],
                     "inactive": [],
                     "parameters": [],
                     "children": [],
@@ -596,7 +614,7 @@ suite("MooseDoc Tests", function () {
                 },
                 {
                     "type": "duplication",
-                    "start": [9, 0], "end": [9, 9],
+                    "start": [10, 0], "end": [10, 9],
                     "msg": "duplicate block name",
                 }
             ]
@@ -611,7 +629,7 @@ suite("MooseDoc Tests", function () {
         // mdoc.assessOutline().then(value => {
         //     console.log(value);
         // });
-        return expect(mdoc.assessOutline()).to.eventually.eql({
+        return expect(mdoc.assessDocument()).to.eventually.eql({
             outline: [{
                 name: "Kernels",
                 description: "",
@@ -643,7 +661,7 @@ suite("MooseDoc Tests", function () {
         // mdoc.assessOutline().then(value => {
         //     console.log(value);
         // });
-        return expect(mdoc.assessOutline()).to.eventually.eql({
+        return expect(mdoc.assessDocument()).to.eventually.eql({
             outline: [{
                 name: "Kernels",
                 description: "",
@@ -662,35 +680,47 @@ suite("MooseDoc Tests", function () {
 [Kernels]
     active = 'a c'
     [./a]
+        type = x
     [../]
     [./b]
+        type = y
     [../]
 []        `;
         // mdoc.assessOutline().then(value => {
         //     console.log(value);
         // });
-        return expect(mdoc.assessOutline()).to.eventually.eql({
+        return expect(mdoc.assessDocument()).to.eventually.eql({
             outline: [{
-                name: "Kernels",
-                description: "",
-                level: 1,
-                start: [1, 0], end: [7, 2],
-                children: [{
+                "name": "Kernels",
+                "description": "",
+                "level": 1,
+                "start": [1, 0], "end": [9, 2],
+                "children": [{
                     "description": "",
-                    "start": [3, 4], "end": [4, 9],
+                    "start": [3, 4], "end": [5, 9],
                     "inactive": [],
                     "level": 2,
                     "name": "a",
-                    "parameters": [],
+                    "parameters": [{
+                        "description": "A string representing the Moose Object that will be built by this Action\n",
+                        "start": [4, 8], "end": [4, 16],
+                        "name": "type",
+                        "value": "x"
+                    }],
                     "children": []
                 },
                 {
                     "description": "",
-                    "start": [5, 4], "end": [6, 9],
+                    "start": [6, 4], "end": [8, 9],
                     "inactive": [],
                     "level": 2,
                     "name": "b",
-                    "parameters": [],
+                    "parameters": [{
+                        "description": "A string representing the Moose Object that will be built by this Action\n",
+                        "start": [7, 8], "end": [7, 16],
+                        "name": "type",
+                        "value": "y"
+                    }],
                     "children": []
                 }],
                 inactive: ["b"],

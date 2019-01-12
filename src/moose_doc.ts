@@ -387,8 +387,8 @@ export class MooseDoc {
 
         let { configPath, explicitType } = await this.getCurrentConfigPath(pos);
 
-        // for empty [] we suggest blocks
         if (this.isOpenBracketPair(line)) {
+            // for empty [] we suggest blocks
             completions = await this.completeOpenBracketPair(pos, configPath);
         } else if (this.isTypeParameter(line)) {
             completions = await this.completeTypeParameter(line, pos.column, configPath, explicitType);
@@ -616,22 +616,30 @@ export class MooseDoc {
     /** yield sub-blocks of a given set of top blocks
      *  
      * @param blockNames the names of the top blocks (e.g. Functions, PostProcessors)
-     * @param gatherParameters if true, return parameters of the sub block
+     * @param gatherParameters if true, return parameters of the block and sub blocks
      * @param paramFilter if not null return only these parameters of the subblock
+     * @yields objects containing the mainBlock name, sub block name, opening row and dict of properties, 
+     *         Note that, if the name is null, this is the properties for the main block
      */
     private * yieldSubBlockList(blockNames: string[],
         gatherParameters: Boolean = false, paramFilter: string[] | null = null) {
         let row = 0;
         let level = 0;
         let regexMatch: RegExpExecArray | null;
-        let mainBlock: string | null = null;
+        let mainBlockName: string | null = null;
         let subBlock: {
             mainBlock: string
-            name: string,
+            name: string | null,
             properties: { [index: string]: string },
             row: number
         } = { mainBlock: '', name: '', properties: {}, row: 0 };
- 
+        let mainBlock: {
+            mainBlock: string
+            name: string | null,
+            properties: { [index: string]: string },
+            row: number
+        } = { mainBlock: '', name: null, properties: {}, row: 0 };
+
         let nlines = this.getDoc().getLineCount();
 
         // parse contents of subBlock block
@@ -650,27 +658,34 @@ export class MooseDoc {
                     while (blockNames.indexOf(regexMatch[1]) >= 0) {
                         blockNames.splice(blockNames.indexOf(regexMatch[1]), 1);
                     }
-                    mainBlock = regexMatch[1];
+                    mainBlockName = regexMatch[1];
+                    mainBlock = {
+                        mainBlock: mainBlockName,
+                        name: null,
+                        properties: {},
+                        row: row
+                    };
                 }
             } else if (blockCloseTop.test(line)) {
-                mainBlock = null;
+                yield mainBlock;
+                mainBlockName = null;
                 // if all blocks have been found, then finish
                 if (blockNames.length <= 0) {
                     break;
                 }
             }
-            if (mainBlock === null) {
+            if (mainBlockName === null) {
                 // if we are not in a required block, then continue to next row
                 row++;
                 continue;
             }
-            
+
             if (blockOpenOneLevel.test(line)) {
                 if (level === 0) {
                     let blockopen = blockOpenOneLevel.exec(line);
                     if (blockopen !== null) {
                         subBlock = {
-                            mainBlock: mainBlock,
+                            mainBlock: mainBlockName,
                             name: blockopen[1],
                             properties: {},
                             row: row
@@ -687,6 +702,11 @@ export class MooseDoc {
                 let paramName = regexMatch[1];
                 if (paramFilter === null || paramFilter.indexOf(paramName) >= 0) {
                     subBlock.properties[paramName] = regexMatch[2];
+                }
+            } else if (level === 0 && gatherParameters && (regexMatch = otherParameter.exec(line))) {
+                let paramName = regexMatch[1];
+                if (paramFilter === null || paramFilter.indexOf(paramName) >= 0) {
+                    mainBlock.properties[paramName] = regexMatch[2];
                 }
             }
 
@@ -808,7 +828,8 @@ export class MooseDoc {
     private computeSubBlockNameCompletion(blockNames: string[], propertyNames: string[]) {
         let completions: Completion[] = [];
         for (let block of Array.from(blockNames)) {
-            for (let { name, properties } of Array.from(this.yieldSubBlockList([block], true, propertyNames))) {
+            for (let { name, properties } of this.yieldSubBlockList([block], true, propertyNames)) {
+                if (name === null) { continue; }
                 let doc = [];
                 for (let propertyName of Array.from(propertyNames)) {
                     if (propertyName in properties) {
@@ -1085,8 +1106,6 @@ export class MooseDoc {
         return completions;
     }
 
-    // TODO issue when sub-block named the same as a type, should include a warning if this is the case
-
     /** assess the outline of the whole document
      * 
      * Returns an object containing:
@@ -1097,7 +1116,7 @@ export class MooseDoc {
      * @param indentLength the number of spaces per indent
      * 
      */
-    public async assessOutline(indentLength: number = 4) {
+    public async assessDocument(indentLength: number = 4) {
 
         let outlineItems: OutlineBlockItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
@@ -1114,6 +1133,16 @@ export class MooseDoc {
             // return { outline: outlineItems, errors: syntaxErrors };
         }
 
+        // perform an initial pass to gather global parameters
+        let globalParamDict: { [index: string]: string } = {}; // {name: value}
+        for (let { properties } of this.yieldSubBlockList(["GlobalParams"], true)) {
+            for (let param in properties) {
+                globalParamDict[param] = properties[param];
+            }
+        }
+        // TODO also gather variable definitions
+
+        // step through document
         for (var row = 0; row < this.getDoc().getLineCount(); row++) {
 
             line = this.getDoc().getTextForRow(row);
@@ -1121,18 +1150,18 @@ export class MooseDoc {
             emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors, line);
 
             if (blockOpenTop.test(line)) {
-                await this.assessMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
+                await this.assessMainBlock(currLevel, syntaxErrors, row, line, outlineItems, globalParamDict);
                 currLevel = 1;
                 indentLevel = 0;
             } else if (blockCloseTop.test(line)) {
-                await this.closeMainBlock(currLevel, syntaxErrors, row, line, outlineItems);
+                await this.closeMainBlock(currLevel, syntaxErrors, row, line, outlineItems, globalParamDict);
                 currLevel = 0;
                 indentLevel = 0;
             } else if (blockOpenOneLevel.test(line)) {
                 currLevel = await this.assessSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 indentLevel = currLevel - 1;
             } else if (blockCloseOneLevel.test(line)) {
-                currLevel = await this.closeSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
+                currLevel = await this.closeSubBlock(currLevel, syntaxErrors, row, line, outlineItems, globalParamDict);
                 indentLevel = currLevel;
             } else if (/^\s*[_a-zA-Z0-9]+\s*=.*$/.test(line)) {
                 await this.assessParameter(line, outlineItems, syntaxErrors, row, currLevel);
@@ -1170,7 +1199,7 @@ export class MooseDoc {
                     insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
                 }
             });
-            await this.closeFinalBlockAndChildren(outlineItems, 1, row, "", syntaxErrors);
+            await this.closeFinalBlockAndChildren(outlineItems, 1, row, "", syntaxErrors, globalParamDict);
         }
         emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors, line);
 
@@ -1199,7 +1228,8 @@ export class MooseDoc {
         return emptyLines;
     }
 
-    private async assessMainBlock(level: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
+    private async assessMainBlock(level: number, syntaxErrors: SyntaxError[], row: number, line: string,
+        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string }) {
 
         let blockName: string;
 
@@ -1214,7 +1244,7 @@ export class MooseDoc {
                     insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
                 }
             });
-            await this.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line, syntaxErrors);
+            await this.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line, syntaxErrors, globalParamDict);
             level = 0;
         }
 
@@ -1245,7 +1275,8 @@ export class MooseDoc {
         return;
     }
 
-    private async closeMainBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
+    private async closeMainBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string,
+        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string }) {
 
         // check all sub-blocks have been closed
         if (currLevel > 1) {
@@ -1258,7 +1289,7 @@ export class MooseDoc {
                     insertionBefore: "[../]\n".repeat(currLevel - 1)
                 }
             });
-            await this.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line, syntaxErrors);
+            await this.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line, syntaxErrors, globalParamDict);
         }
         // check a main block has been opened
         else if (currLevel < 1) {
@@ -1272,7 +1303,7 @@ export class MooseDoc {
                 }
             });
         }
-        await this.closeFinalBlockAndChildren(outlineItems, 1, row, line, syntaxErrors);
+        await this.closeFinalBlockAndChildren(outlineItems, 1, row, line, syntaxErrors, globalParamDict);
     }
 
     private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
@@ -1295,7 +1326,7 @@ export class MooseDoc {
 
         // get parent node
         let { child } = MooseDoc.getFinalChild(outlineItems, currLevel);
-        if (child === null) { 
+        if (child === null) {
             currLevel++;
             return currLevel;
         }
@@ -1318,7 +1349,8 @@ export class MooseDoc {
         return currLevel;
     }
 
-    private async closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
+    private async closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string,
+        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string }) {
         if (currLevel === 0) {
             syntaxErrors.push({
                 type: "closure",
@@ -1336,7 +1368,7 @@ export class MooseDoc {
             });
         }
         else {
-            let levelsClosed = await this.closeFinalBlockAndChildren(outlineItems, currLevel, row, line, syntaxErrors);
+            let levelsClosed = await this.closeFinalBlockAndChildren(outlineItems, currLevel, row, line, syntaxErrors, globalParamDict);
             currLevel = currLevel - levelsClosed;
         }
         return currLevel;
@@ -1366,7 +1398,7 @@ export class MooseDoc {
     /**
      * close a single block, updating its end row and active children
      */
-    private async closeSingleBlock(block: OutlineBlockItem, endPos: [number, number], parentPath: string[]) {
+    private async closeSingleBlock(block: OutlineBlockItem, endPos: [number, number], parentPath: string[], globalParamDict: { [index: string]: string }) {
 
         let syntaxErrors: SyntaxError[] = [];
 
@@ -1382,7 +1414,7 @@ export class MooseDoc {
                 syntaxErrors.push({
                     type: "duplication",
                     start: child.start,
-                    end: [child.start[0], child.start[1]+("[./"+child.name+"]").length],
+                    end: [child.start[0], child.start[1] + ("[./" + child.name + "]").length],
                     msg: 'duplicate block name'
                 });
             } else {
@@ -1414,7 +1446,7 @@ export class MooseDoc {
                 type: "duplication",
                 start: block.start,
                 end: [block.start[0],
-                      block.start[1] + (block.level>1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
+                block.start[1] + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
                 msg: 'active and inactive parameters are not allowed in the same block'
             };
             syntaxErrors.push(error);
@@ -1491,7 +1523,7 @@ export class MooseDoc {
                 type: "dbcheck",
                 start: block.start,
                 end: [block.start[0],
-                      block.start[1] + (block.level>1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
+                block.start[1] + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
                 msg: 'block path was not found in database: ' + configPath.join("/")
             };
             syntaxErrors.push(error);
@@ -1511,6 +1543,8 @@ export class MooseDoc {
             }
 
             // add details and checks for parameters
+            // TODO issue when sub-block named the same as a type, should include a warning if this is the case
+            let stringPath = (typeName !== null) ? configPath.concat([typeName]).join("/") : configPath.join("/");
             if (configPath[0] !== "GlobalParams") {
                 for (let pname in paramDict) {
                     if (pname in nodeParamDict) {
@@ -1519,23 +1553,44 @@ export class MooseDoc {
                         }
                     } else {
                         for (let param of paramDict[pname]) {
-                            let stringPath = (typeName !== null) ? configPath.concat([typeName]).join("/") : configPath.join("/");
                             let error: SyntaxError = {
                                 type: "dbcheck",
                                 start: param.start,
                                 end: param.end,
-                                msg: 'parameter name "'+pname+'" was not found for this block in database: ' + stringPath
+                                msg: 'parameter name "' + pname + '" was not found for this block in database: ' + stringPath
                             };
                             syntaxErrors.push(error);
                         }
                     }
                 }
+                // check all required parameters, that don't have default values, are present
+                let missingParams: string[] = [];
+                for (let npname in nodeParamDict) {
+                    let pnode = nodeParamDict[npname];
+                    if (pnode.required === "Yes" && pnode.default === "") {
+                        if (!((npname in paramDict) || (npname in globalParamDict))) {
+                            missingParams.push(npname);
+                        }
+                    }
+                }
+                if (missingParams.length > 0) {
+                    let error: SyntaxError = {
+                        type: "dbcheck",
+                        start: block.start,
+                        end: [block.start[0],
+                        block.start[1] + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
+                        msg: 'required parameter(s) "' + missingParams.join(", ") + '" not present in block: ' + stringPath,
+                        correction: {
+                            insertionAfter: "\n" + missingParams.join(" = \n") + " = \n" // TODO need to include indentation for each param
+                        }
+                    };
+                    syntaxErrors.push(error);
+                }
             }
-            // TODO deal with parameters in GlobalParams block (must gather then on a first parse)
-            
-        }
 
-        // TODO check all required parameters are present (but must account for parameters specified in GlobalParams)
+            // TODO checks of values
+
+        }
 
         return syntaxErrors;
     }
@@ -1549,10 +1604,11 @@ export class MooseDoc {
      * @param row the row number of the closure
      * @param length the length of the closure line
      * @param syntaxErrors the list of errors to add to
+     * @param globalParamDict dictionary of global parameters {name: value}
      * @returns number of levels closed
      */
     private async closeFinalBlockAndChildren(outline: OutlineBlockItem[],
-        blockLevel: number, row: number, line: string, syntaxErrors: SyntaxError[]) {
+        blockLevel: number, row: number, line: string, syntaxErrors: SyntaxError[], globalParamDict: { [index: string]: string }) {
         let levelsClosed = 0;
         let configPath: string[] = [];
 
@@ -1576,7 +1632,7 @@ export class MooseDoc {
             // throw Error('block already closed');
         } else {
             let closePos = line.search(/\]/);
-            let errors = await this.closeSingleBlock(item, [row, closePos >= 0 ? closePos + 1 : 0], configPath)
+            let errors = await this.closeSingleBlock(item, [row, closePos >= 0 ? closePos + 1 : 0], configPath, globalParamDict);
             syntaxErrors.push(...errors);
             levelsClosed++;
         }
@@ -1585,7 +1641,7 @@ export class MooseDoc {
             configPath.push(item.name);
             item = item.children[item.children.length - 1];
             if (item.end === null) {
-                let errors = await this.closeSingleBlock(item, [row, 0], configPath)
+                let errors = await this.closeSingleBlock(item, [row, 0], configPath, globalParamDict);
                 syntaxErrors.push(...errors);
                 levelsClosed++;
             }

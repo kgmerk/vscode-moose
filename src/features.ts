@@ -119,7 +119,7 @@ export class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEdit
         let vsEdit: vscode.TextEdit;
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
 
-        let {errors} = await mooseDoc.assessOutline(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+        let {errors} = await mooseDoc.assessDocument(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
         let row = position.line;
 
         for (let error of errors) {
@@ -153,7 +153,7 @@ export class DocumentFormattingEditProvider implements vscode.DocumentFormatting
         let vsEdit: vscode.TextEdit;
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
 
-        let { errors } = await mooseDoc.assessOutline(
+        let { errors } = await mooseDoc.assessDocument(
             vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
 
         for (let error of errors) {
@@ -262,7 +262,7 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
         let outline: OutlineBlockItem[];
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         try {
-            ({ outline } = await mooseDoc.assessOutline());
+            ({ outline } = await mooseDoc.assessDocument());
         } catch (err) {
             console.log(err);
             throw err;
@@ -320,7 +320,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let message: string;
         let range: vscode.Range;
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
-        let { outline, errors } = await mooseDoc.assessOutline();
+        let { outline, errors } = await mooseDoc.assessDocument();
         for (let error of errors) {
             if (dtypes.indexOf(error.type) < 0) {
                 continue;
