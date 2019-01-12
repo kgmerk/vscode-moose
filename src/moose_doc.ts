@@ -72,10 +72,10 @@ export interface OutlineBlockItem {
 }
 export interface SyntaxError {
     // closure = block not closed, 
-    // duplication = duplication of block or parameter name
-    // refmatch = referenced block or parameter not found
-    // dbmatch = block or parameter not found in the syntax database
-    type: "closure" | "duplication" | "refmatch" | "dbmatch";
+    // duplication = duplication of block or parameter names
+    // refcheck = internal reference checks (e.g. block or variable not found)
+    // dbcheck =  checks against the syntax database (e.g. block or parameter not found)
+    type: "closure" | "duplication" | "refcheck" | "dbcheck";
     row: number;
     columns: [number, number];
     msg: string;
@@ -1407,7 +1407,7 @@ export class MooseDoc {
                 for (let activeBlock of activeBlocks) {
                     if (!(activeBlock in childDict)) {
                         let error: SyntaxError = {
-                            type: "refmatch",
+                            type: "refcheck",
                             row: param.start[0],
                             columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
                             msg: 'subblock specified in active parameter value not found: ' + activeBlock
@@ -1433,7 +1433,7 @@ export class MooseDoc {
                 for (let inactiveBlock of inactiveBlocks) {
                     if (!(inactiveBlock in childDict)) {
                         let error: SyntaxError = {
-                            type: "refmatch",
+                            type: "refcheck",
                             row: param.start[0],
                             columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
                             msg: 'subblock specified in inactive parameter value not found: ' + inactiveBlock
@@ -1468,7 +1468,7 @@ export class MooseDoc {
         }
         if (blockMatch === null) {
             let error: SyntaxError = {
-                type: "dbmatch",
+                type: "dbcheck",
                 row: block.start[0],
                 columns: [block.start[1], block.start[1]],
                 msg: 'block path was not found in database: ' + configPath.join("/")
@@ -1500,7 +1500,7 @@ export class MooseDoc {
                         for (let param of paramDict[pname]) {
                             let stringPath = (typeName !== null) ? configPath.concat([typeName]).join("/") : configPath.join("/");
                             let error: SyntaxError = {
-                                type: "dbmatch",
+                                type: "dbcheck",
                                 row: param.start[0],
                                 columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
                                 msg: 'parameter name "'+pname+'" was not found for this block in database: ' + stringPath
@@ -1509,9 +1509,9 @@ export class MooseDoc {
                         }
                     }
                 }
-            } else {
-                // TODO deal with parameters in GlobalParams block (must gather then on a first parse)
             }
+            // TODO deal with parameters in GlobalParams block (must gather then on a first parse)
+            
         }
 
         // TODO check all required parameters are present (but must account for parameters specified in GlobalParams)

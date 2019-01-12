@@ -626,7 +626,7 @@ suite("MooseDoc Tests", function () {
                 }],
             }],
             errors: [{
-                "type": "dbmatch",
+                "type": "dbcheck",
                 "msg": "parameter name \"a\" was not found for this block in database: Kernels",
                 "columns": [4, 9], "row": 2
             }],
@@ -702,7 +702,7 @@ suite("MooseDoc Tests", function () {
                 }],
             }],
             errors: [{
-                "type": "refmatch",
+                "type": "refcheck",
                 "row": 2, "columns": [4, 18],
                 "msg": "subblock specified in active parameter value not found: c"
             }],
