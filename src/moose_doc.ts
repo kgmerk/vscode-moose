@@ -71,6 +71,11 @@ export interface OutlineBlockItem {
     inactive: string[];  // a list of inactive children names
 }
 export interface SyntaxError {
+    // closure = block not closed, 
+    // duplication = duplication of block or parameter name
+    // refmatch = referenced block or parameter not found
+    // dbmatch = block or parameter not found in the syntax database
+    type: "closure" | "duplication" | "refmatch" | "dbmatch";
     row: number;
     columns: [number, number];
     msg: string;
@@ -1160,6 +1165,7 @@ export class MooseDoc {
         // check no blocks are left unclosed
         if (currLevel !== 0) {
             syntaxErrors.push({
+                type: "closure",
                 row: row, columns: [0, line.length],
                 msg: 'final block(s) unclosed',
                 insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
@@ -1198,6 +1204,7 @@ export class MooseDoc {
         // test we are not already in a top block
         if (level > 0) {
             syntaxErrors.push({
+                type: "closure",
                 row: row, columns: [0, line.length],
                 msg: 'block opened before previous one closed',
                 insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
@@ -1211,6 +1218,7 @@ export class MooseDoc {
         blockName = blocknames !== null ? blocknames[1] : '';
         if (outlineItems.map(o => o.name).indexOf(blockName) !== -1) {
             syntaxErrors.push({
+                type: "duplication",
                 row: row, columns: [0, line.length],
                 msg: 'duplicate block name'
             });
@@ -1236,6 +1244,7 @@ export class MooseDoc {
         // check all sub-blocks have been closed
         if (currLevel > 1) {
             syntaxErrors.push({
+                type: "closure",
                 row: row, columns: [0, line.length],
                 msg: 'closed parent block before closing children',
                 insertionBefore: "[../]\n".repeat(currLevel - 1)
@@ -1245,6 +1254,7 @@ export class MooseDoc {
         // check a main block has been opened
         else if (currLevel < 1) {
             syntaxErrors.push({
+                type: "closure",
                 row: row, columns: [0, line.length],
                 msg: 'closed block before opening new one',
                 insertionBefore: "[${1:name}]\n"
@@ -1260,6 +1270,7 @@ export class MooseDoc {
         // check we are in a main block
         if (currLevel === 0) {
             syntaxErrors.push({
+                type: "closure",
                 row: row, columns: [0, line.length],
                 msg: 'opening sub-block before main block open',
                 insertionBefore: "[${1:name}]\n"
@@ -1295,12 +1306,14 @@ export class MooseDoc {
     private async closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
         if (currLevel === 0) {
             syntaxErrors.push({
+                type: "closure",
                 row: row, columns: [0, line.length],
                 msg: 'closing sub-block before opening main block',
             });
         }
         else if (currLevel === 1) {
             syntaxErrors.push({
+                type: "closure",
                 row: row, columns: [0, line.length],
                 msg: 'closing sub-block before opening one',
             });
@@ -1350,6 +1363,7 @@ export class MooseDoc {
                 childDict[child.name].push(child);
                 // add syntax error for duplication
                 syntaxErrors.push({
+                    type: "duplication",
                     row: child.start[0], columns: [child.start[1], child.end ? ((child.start[0] === child.end[0]) ? child.end[1] : child.end[0]) : child.start[1]],
                     msg: 'duplicate block name'
                 });
@@ -1365,6 +1379,7 @@ export class MooseDoc {
                 paramDict[param.name].push(param);
                 // add syntax error for duplication
                 syntaxErrors.push({
+                    type: "duplication",
                     row: param.start[0], columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
                     msg: 'duplicate parameter name'
                 });
@@ -1377,6 +1392,7 @@ export class MooseDoc {
         if ("active" in paramDict && "inactive" in paramDict) {
             // TODO does active override inactive or visa-versa, or are they not both allowed
             let error: SyntaxError = {
+                type: "duplication",
                 row: block.start[0],
                 columns: [0, block.start[1]],
                 msg: 'active and inactive parameters are not allowed in the same block'
@@ -1391,6 +1407,7 @@ export class MooseDoc {
                 for (let activeBlock of activeBlocks) {
                     if (!(activeBlock in childDict)) {
                         let error: SyntaxError = {
+                            type: "refmatch",
                             row: param.start[0],
                             columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
                             msg: 'subblock specified in active parameter value not found: ' + activeBlock
@@ -1416,6 +1433,7 @@ export class MooseDoc {
                 for (let inactiveBlock of inactiveBlocks) {
                     if (!(inactiveBlock in childDict)) {
                         let error: SyntaxError = {
+                            type: "refmatch",
                             row: param.start[0],
                             columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
                             msg: 'subblock specified in inactive parameter value not found: ' + inactiveBlock
@@ -1450,6 +1468,7 @@ export class MooseDoc {
         }
         if (blockMatch === null) {
             let error: SyntaxError = {
+                type: "dbmatch",
                 row: block.start[0],
                 columns: [block.start[1], block.start[1]],
                 msg: 'block path was not found in database: ' + configPath.join("/")
@@ -1481,9 +1500,10 @@ export class MooseDoc {
                         for (let param of paramDict[pname]) {
                             let stringPath = (typeName !== null) ? configPath.concat([typeName]).join("/") : configPath.join("/");
                             let error: SyntaxError = {
+                                type: "dbmatch",
                                 row: param.start[0],
                                 columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
-                                msg: 'parameter name "'+pname+'" was not found for this block: ' + stringPath
+                                msg: 'parameter name "'+pname+'" was not found for this block in database: ' + stringPath
                             };
                             syntaxErrors.push(error);
                         }

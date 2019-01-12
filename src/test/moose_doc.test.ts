@@ -407,7 +407,7 @@ suite("MooseDoc Tests", function () {
         ]);
     });
 
-    test("Outline (with errors)", function () {
+    test("Outline (with closure/duplication errors and bad indentation)", function () {
         doc.text = `
 []
  [Kernels]  # a comment
@@ -472,25 +472,25 @@ suite("MooseDoc Tests", function () {
                 parameters: []
             }],
             errors: [{
-                row: 1,
-                columns: [0, 2],
+                type: "closure",
+                row: 1, columns: [0, 2],
                 msg: "closed block before opening new one",
                 insertionBefore: "[${1:name}]\n"
             },
             {
-                row: 6,
-                columns: [0, 9],
+                type: "closure",
+                row: 6, columns: [0, 9],
                 msg: "block opened before previous one closed",
                 insertionBefore: "[]\n"
             },
             {
-                row: 6,
-                columns: [0, 9],
+                type: "duplication",
+                row: 6, columns: [0, 9],
                 msg: "duplicate block name"
             },
             {
-                row: 14,
-                columns: [0, 8],
+                type: "closure",
+                row: 14, columns: [0, 8],
                 msg: "final block(s) unclosed",
                 insertionAfter: "[]\n"
             }],
@@ -583,14 +583,17 @@ suite("MooseDoc Tests", function () {
             ],
             "errors": [
                 {
+                    "type": "duplication",
                     "row": 4, "columns": [8, 16],
                     "msg": "duplicate parameter name",
                 },
                 {
+                    "type": "duplication",
                     "row": 6, "columns": [4, 7],
                     "msg": "duplicate block name",
                 },
                 {
+                    "type": "duplication",
                     "row": 9, "columns": [0, 9],
                     "msg": "duplicate block name",
                 }
@@ -623,7 +626,8 @@ suite("MooseDoc Tests", function () {
                 }],
             }],
             errors: [{
-                "msg": "parameter name \"a\" was not found for this block: Kernels",
+                "type": "dbmatch",
+                "msg": "parameter name \"a\" was not found for this block in database: Kernels",
                 "columns": [4, 9], "row": 2
             }],
             edits: []
@@ -698,6 +702,7 @@ suite("MooseDoc Tests", function () {
                 }],
             }],
             errors: [{
+                "type": "refmatch",
                 "row": 2, "columns": [4, 18],
                 "msg": "subblock specified in active parameter value not found: c"
             }],

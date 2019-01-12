@@ -304,6 +304,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         }
         let diagnostics: vscode.Diagnostic[] = [];
         if (!vscode.workspace.getConfiguration('moose').get('diagnostics', false)) {
+            // TODO include configuration for what type of errors to check for
             this.diagnosticCollection.set(document.uri, diagnostics);
             return;
         }
@@ -319,6 +320,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
             range = new vscode.Range(new vscode.Position(error.row, error.columns[0]), new vscode.Position(error.row, error.columns[1]));
             diagnostic = new vscode.Diagnostic(range, message, severity);
             diagnostic.source = "moose";
+            diagnostic.code = error.type;
             diagnostics.push(diagnostic);
         }
         for (let edit of edits) {
@@ -329,6 +331,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
                 new vscode.Position(...edit.end));
             diagnostic = new vscode.Diagnostic(range, message, severity);
             diagnostic.source = "moose";
+            diagnostic.code = edit.type;
             diagnostics.push(diagnostic);
         }
         for (let block of outline) {
