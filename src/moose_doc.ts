@@ -142,6 +142,9 @@ export class MooseDoc {
         }
         return this.doc;
     }
+    public getSyntaxDB() {
+        return this.syntaxdb;
+    }
 
     private static getWordAt(line: string, column: number, regex: string = "_0-9a-zA-Z") {
 
@@ -1078,6 +1081,13 @@ export class MooseDoc {
         let indentLevel = 0;
         let emptyLines: number[] = [];
 
+        // ensure syntax DB has loaded
+        try {
+            await this.syntaxdb.retrieveSyntaxNodes();
+        } catch (err) {
+            // return { outline: outlineItems, errors: syntaxErrors, edits: textEdits };
+        }
+
         for (var row = 0; row < this.getDoc().getLineCount(); row++) {
 
             line = this.getDoc().getTextForRow(row);
@@ -1232,8 +1242,8 @@ export class MooseDoc {
         }
 
         // get parent node
-        let { child, config } = MooseDoc.getFinalChild(outlineItems, currLevel);
-        if (child === null) {
+        let { child } = MooseDoc.getFinalChild(outlineItems, currLevel);
+        if (child === null) { 
             currLevel++;
             return currLevel;
         }
@@ -1447,7 +1457,7 @@ export class MooseDoc {
                             let error: SyntaxError = {
                                 row: param.start[0],
                                 columns: [param.start[1], param.start[0] === param.end[0] ? param.end[1] : param.end[0]],
-                                msg: 'parameter name was not found for this block: ' + stringPath
+                                msg: 'parameter name "'+pname+'" was not found for this block: ' + stringPath
                             };
                             syntaxErrors.push(error);
                         }

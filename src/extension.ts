@@ -134,37 +134,34 @@ export function activate(context: vscode.ExtensionContext) {
         checkPath(filePath);
     }));
 
-    // create the moose document instance
-    let mooseDoc = new MooseDoc(syntaxDB);
-
     // register all functionality providers
     // See: https://code.visualstudio.com/api/language-extensions/programmatic-language-features
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider(
-            moose_selector, new DefinitionProvider(mooseDoc)));
+            moose_selector, new DefinitionProvider(syntaxDB)));
 
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(
-            moose_selector, new HoverProvider(mooseDoc)));
+            moose_selector, new HoverProvider(syntaxDB)));
 
     context.subscriptions.push(
         vscode.languages.registerOnTypeFormattingEditProvider(
-            moose_selector, new OnTypeFormattingEditProvider(mooseDoc), "]", " "));
+            moose_selector, new OnTypeFormattingEditProvider(syntaxDB), "]", " "));
 
     context.subscriptions.push(
         vscode.languages.registerDocumentFormattingEditProvider(
-            moose_selector, new DocumentFormattingEditProvider(mooseDoc)));
+            moose_selector, new DocumentFormattingEditProvider(syntaxDB)));
 
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
-            moose_selector, new CompletionItemProvider(mooseDoc), "[", "="));
+            moose_selector, new CompletionItemProvider(syntaxDB), "[", "="));
 
     context.subscriptions.push(
         vscode.languages.registerDocumentSymbolProvider(
-            moose_selector, new DocumentSymbolProvider(mooseDoc)));
+            moose_selector, new DocumentSymbolProvider(syntaxDB)));
 
-    let linter = new CodeActionsProvider(mooseDoc, context.subscriptions);
+    let linter = new CodeActionsProvider(syntaxDB, context.subscriptions);
     vscode.languages.registerCodeActionsProvider(moose_selector, linter);
 
     // context.subscriptions.push(

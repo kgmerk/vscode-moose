@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { MooseDoc, OutlineBlockItem, OutlineParamItem } from './moose_doc';
 import { VSDoc } from './extension';
+import { MooseSyntaxDB } from './moose_syntax';
 
 
 function selectSymbolKind(kind: string, level: number) {
@@ -47,14 +48,17 @@ function selectCompleteKind(kind: string, required = false) {
     }
 }
 export class DefinitionProvider implements vscode.DefinitionProvider {
-    private mooseDoc: MooseDoc;
-    constructor(mooseDoc: MooseDoc) {
-        this.mooseDoc = mooseDoc;
+
+    private mooseSyntaxDB: MooseSyntaxDB;
+
+    constructor(mooseSyntaxDB: MooseSyntaxDB) {
+        this.mooseSyntaxDB = mooseSyntaxDB;
     }
+    
     public async provideDefinition(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
-        this.mooseDoc.setDoc(new VSDoc(document));
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let pos = { row: position.line, column: position.character };
-        let match = await this.mooseDoc.findCurrentNode(pos);
+        let match = await mooseDoc.findCurrentNode(pos);
         if (match !== null && "defPosition" in match.node) {
             return new vscode.Location(document.uri,
                 new vscode.Position(match.node.defPosition.row, match.node.defPosition.column));
@@ -67,15 +71,18 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
     }
 }
 export class HoverProvider implements vscode.HoverProvider {
-    private mooseDoc: MooseDoc;
-    constructor(mooseDoc: MooseDoc) {
-        this.mooseDoc = mooseDoc;
+
+    private mooseSyntaxDB: MooseSyntaxDB;
+
+    constructor(mooseSyntaxDB: MooseSyntaxDB) {
+        this.mooseSyntaxDB = mooseSyntaxDB;
     }
+    
     public async provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Promise<vscode.Hover> {
-        this.mooseDoc.setDoc(new VSDoc(document));
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let { line, character } = position;
         let pos = { row: line, column: character };
-        let match = await this.mooseDoc.findCurrentNode(pos);
+        let match = await mooseDoc.findCurrentNode(pos);
         if (match !== null) {
             let { node, path, range } = match;
             let mkdown = new vscode.MarkdownString();
@@ -100,16 +107,19 @@ export class HoverProvider implements vscode.HoverProvider {
 }
 
 export class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEditProvider {
-    private mooseDoc: MooseDoc;
-    constructor(mooseDoc: MooseDoc) {
-        this.mooseDoc = mooseDoc;
+
+    private mooseSyntaxDB: MooseSyntaxDB;
+
+    constructor(mooseSyntaxDB: MooseSyntaxDB) {
+        this.mooseSyntaxDB = mooseSyntaxDB;
     }
+    
     public async provideOnTypeFormattingEdits(document: vscode.TextDocument, position: vscode.Position, ch: string, options: vscode.FormattingOptions, token: vscode.CancellationToken): Promise<vscode.TextEdit[]> {
         let vsEdits: vscode.TextEdit[] = [];
         let vsEdit: vscode.TextEdit;
-        this.mooseDoc.setDoc(new VSDoc(document));
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
 
-        let {edits} = await this.mooseDoc.assessOutline(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
+        let {edits} = await mooseDoc.assessOutline(vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
         let row = position.line;
 
         for (let edit of edits){
@@ -128,16 +138,19 @@ export class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEdit
 }
 
 export class DocumentFormattingEditProvider implements vscode.DocumentFormattingEditProvider {
-    private mooseDoc: MooseDoc;
-    constructor(mooseDoc: MooseDoc) {
-        this.mooseDoc = mooseDoc;
+
+    private mooseSyntaxDB: MooseSyntaxDB;
+
+    constructor(mooseSyntaxDB: MooseSyntaxDB) {
+        this.mooseSyntaxDB = mooseSyntaxDB;
     }
+    
     public async provideDocumentFormattingEdits(document: vscode.TextDocument): Promise<vscode.TextEdit[]> {
         let vsEdits: vscode.TextEdit[] = [];
         let vsEdit: vscode.TextEdit;
-        this.mooseDoc.setDoc(new VSDoc(document));
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
 
-        let { edits } = await this.mooseDoc.assessOutline(
+        let { edits } = await mooseDoc.assessOutline(
             vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
 
         for (let edit of edits){
@@ -154,16 +167,19 @@ export class DocumentFormattingEditProvider implements vscode.DocumentFormatting
 }
 
 export class CompletionItemProvider implements vscode.CompletionItemProvider {
-    private mooseDoc: MooseDoc;
-    constructor(mooseDoc: MooseDoc) {
-        this.mooseDoc = mooseDoc;
+
+    private mooseSyntaxDB: MooseSyntaxDB;
+
+    constructor(mooseSyntaxDB: MooseSyntaxDB) {
+        this.mooseSyntaxDB = mooseSyntaxDB;
     }
+    
     public async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
         let completions: vscode.CompletionItem[] = [];
-        this.mooseDoc.setDoc(new VSDoc(document));
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let { line, character } = position;
         let pos = { row: line, column: character };
-        let mcomps = await this.mooseDoc.findCompletions(pos);
+        let mcomps = await mooseDoc.findCompletions(pos);
         for (let mcomp of mcomps) {
             let completion = new vscode.CompletionItem(mcomp.displayText);
             if (mcomp.required) {
@@ -186,11 +202,15 @@ export class CompletionItemProvider implements vscode.CompletionItemProvider {
         return completions;
     }
 }
+
 export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
-    private mooseDoc: MooseDoc;
-    constructor(mooseDoc: MooseDoc) {
-        this.mooseDoc = mooseDoc;
+
+    private mooseSyntaxDB: MooseSyntaxDB;
+
+    constructor(mooseSyntaxDB: MooseSyntaxDB) {
+        this.mooseSyntaxDB = mooseSyntaxDB;
     }
+
     private createSymbol(item: OutlineBlockItem | OutlineParamItem) {
         if (!item.end) {
             return null;
@@ -233,9 +253,9 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
         let symbols: vscode.DocumentSymbol[] = [];
         let symbol: vscode.DocumentSymbol | null;
         let outline: OutlineBlockItem[];
-        this.mooseDoc.setDoc(new VSDoc(document));
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         try {
-            ({ outline } = await this.mooseDoc.assessOutline());
+            ({ outline } = await mooseDoc.assessOutline());
         } catch (err) {
             console.log(err);
             throw err;
@@ -251,14 +271,17 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
         return symbols;
     }
 }
+
 // adapted from https://github.com/hoovercj/vscode-extension-tutorial
 export class CodeActionsProvider implements vscode.CodeActionProvider {
+
     private static commandId: string = 'moose.runCodeAction';
     private command: vscode.Disposable;
     private diagnosticCollection: vscode.DiagnosticCollection;
-    private mooseDoc: MooseDoc;
-    constructor(mooseDoc: MooseDoc, subscriptions: vscode.Disposable[]) {
-        this.mooseDoc = mooseDoc;
+    private mooseSyntaxDB: MooseSyntaxDB;
+
+    constructor(mooseSyntaxDB: MooseSyntaxDB, subscriptions: vscode.Disposable[]) {
+        this.mooseSyntaxDB = mooseSyntaxDB;
         this.command = vscode.commands.registerCommand(CodeActionsProvider.commandId, this.runCodeAction, this);
         subscriptions.push(this);
         this.diagnosticCollection = vscode.languages.createDiagnosticCollection();
@@ -288,8 +311,8 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let severity: vscode.DiagnosticSeverity;
         let message: string;
         let range: vscode.Range;
-        this.mooseDoc.setDoc(new VSDoc(document));
-        let { outline, errors, edits } = await this.mooseDoc.assessOutline();
+        let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
+        let { outline, errors, edits } = await mooseDoc.assessOutline();
         for (let error of errors) {
             severity = vscode.DiagnosticSeverity.Error;
             message = error.msg;
@@ -330,7 +353,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         }        
     }
     public provideCodeActions(document: vscode.TextDocument, range: vscode.Range, context: vscode.CodeActionContext, token: vscode.CancellationToken): vscode.CodeAction[] {
-        this.mooseDoc.setDoc(new VSDoc(document));
+        // let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let commands: vscode.CodeAction[] = [];
         // TODO create CodeActionsProvider
         // let a = new vscode.CodeAction("hi");

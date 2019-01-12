@@ -623,7 +623,7 @@ suite("MooseDoc Tests", function () {
                 }],
             }],
             errors: [{
-                "msg": "parameter name was not found for this block: Kernels",
+                "msg": "parameter name \"a\" was not found for this block: Kernels",
                 "columns": [4, 9], "row": 2
             }],
             edits: []
