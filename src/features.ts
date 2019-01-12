@@ -310,8 +310,8 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
             return;
         }
         let diagnostics: vscode.Diagnostic[] = [];
-        if (!vscode.workspace.getConfiguration('moose').get('diagnostics', false)) {
-            // TODO include configuration for what type of errors to check for
+        let dtypes: string[] = vscode.workspace.getConfiguration('moose').get('diagnostics', []);
+        if (dtypes.length === 0) {
             this.diagnosticCollection.set(document.uri, diagnostics);
             return;
         }
@@ -322,6 +322,9 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let { outline, errors } = await mooseDoc.assessOutline();
         for (let error of errors) {
+            if (dtypes.indexOf(error.type) < 0) {
+                continue;
+            }
             if (error.type === "format") {
                 severity = vscode.DiagnosticSeverity.Warning;
             } else {

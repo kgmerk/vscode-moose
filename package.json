@@ -57,9 +57,12 @@
           "default": 4
         },
         "moose.diagnostics": {
-          "type": "boolean",
-          "description": "turn on/off file diagnostics",
-          "default": true
+          "type": "array",
+          "description": "specify which syntax error types to diagnose",
+          "default": ["closure", "duplication", "refcheck", "dbcheck", "format"],
+          "items": {
+            "enum": ["closure", "duplication", "refcheck", "dbcheck", "format"]
+          }
         }
       }
     },

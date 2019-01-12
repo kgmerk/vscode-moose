@@ -47,13 +47,13 @@ Autocompletion is triggered either by `Ctrl+Space` or typing `[` or `=`.
 
 ## File Diagnostics
 
-Files are diagnosed for syntax and formatting issues, including:
+Files are diagnosed for multiple types of syntax and formatting errors:
 
-- Unclosed blocks
-- Duplicate blocks/parameters
-- Rejected block/parameter names
-- Bad block indentations
-- Multiple blank lines
+- `closure`: if block(s) have not been closed,
+- `duplication`: duplication of block or parameter names,
+- `refcheck`: internal reference checks (e.g. block or variable not found)
+- `dbcheck`: checks against the syntax database (e.g. block or parameter not found)
+- `format`: formatting warnings, including bad indentation and multiple blank lines
 
 Additionally, blocks which have been set as inactive (by the `active` or `inactive` parameters) will be rendered faded out:
 
@@ -61,7 +61,7 @@ Additionally, blocks which have been set as inactive (by the `active` or `inacti
 
 The amount of fading is controlled by the `editorUnnecessaryCode.opacity` theme colour or can be underlined using `editorUnnecessaryCode.border`.
 
-File diagnostics can be turned on/off in the [Settings](#settings).
+Diagnostics types can be turned on/off in the [Settings](#settings).
 
 ## Auto-Formatting
 
@@ -81,7 +81,7 @@ Settings are configured in `Preferences -> Settings`:
 | `moose.syntax.yaml` | the path of the YAML file                     |
 | `moose.syntax.json` | the path of the JSON file                     |
 | `moose.tab.space`   | the number of spaces per indentation          |
-| `moose.diagnostics` | turn on/off file diagnostics                  |
+| `moose.diagnostics` | specify which syntax error types to diagnose  |
 | `moose.log.debug`   | log debug and warning messages to the console |
 
 ![](images/settings.png)
