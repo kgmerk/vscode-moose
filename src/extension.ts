@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as ppath from 'path';
 
 import { MooseSyntaxDB } from './moose_syntax';
-import { MooseDoc, Document } from './moose_doc';
+import { Document } from './moose_doc';
 import { DefinitionProvider, HoverProvider, OnTypeFormattingEditProvider, DocumentFormattingEditProvider, CompletionItemProvider, DocumentSymbolProvider, CodeActionsProvider } from './features';
 
 export class VSDoc implements Document {
