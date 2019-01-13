@@ -193,8 +193,18 @@ suite("MooseDoc Tests", function () {
         //     }
         // });
         return expect(mdoc.findCurrentNode(cursor)
-        ).to.eventually.be.an('object').with.property('path').eql(
-            ['Materials', 'mat2', 'DerivativeParsedMaterial', 'fmat']);
+        ).to.eventually.be.an('object').which.eql(
+            {
+                node: {
+                    name: "fmat",
+                    description: "Referenced Material",
+                    defPosition: { "row": 4, "column": 17 },
+                    defPath: ['Materials', 'mat2'],
+                    defType: "DerivativeParsedMaterial"
+                },
+                path: ['Materials', 'mat2'],
+                range: [17, 21]
+            });
     });
 
     test("Completion; block", function () {
@@ -430,12 +440,12 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: {row: 2, column: 1}, end: {row: 5, column: 9},
+                start: { row: 2, column: 1 }, end: { row: 5, column: 9 },
                 children: [{
                     name: "v1",
                     description: "",
                     level: 2,
-                    start: {row: 3, column: 4}, end: {row: 4, column: 9},
+                    start: { row: 3, column: 4 }, end: { row: 4, column: 9 },
                     children: [],
                     inactive: [],
                     parameters: []
@@ -447,23 +457,23 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: {row: 6, column: 0}, end: {row: 14, column: 0},
+                start: { row: 6, column: 0 }, end: { row: 14, column: 0 },
                 children: [{
                     name: "akernel",
                     description: "Allen Cahn kernel used when 'mu' is a function of variables",
                     level: 2,
-                    start: {row: 7, column: 4}, end: {row: 10, column: 9},
+                    start: { row: 7, column: 4 }, end: { row: 10, column: 9 },
                     children: [],
                     inactive: [],
                     parameters: [
                         {
                             "description": "A string representing the Moose Object that will be built by this Action\n",
                             "name": "type", "value": "ACBarrierFunction",
-                            "start": {row: 8, column: 1}, "end": {row: 8, column: 37}
+                            "start": { row: 8, column: 1 }, "end": { row: 8, column: 37 }
                         },
                         {
                             "description": "Whether or not this object should use the displaced mesh for computation. Note that in the case this is true but no displacements are provided in the Mesh block the undisplaced mesh will still be used.\n",
-                            "start": {row: 9, column: 8}, "end": {row: 9, column: 46},
+                            "start": { row: 9, column: 8 }, "end": { row: 9, column: 46 },
                             "name": "use_displaced_mesh", "value": null,
                         }
                     ]
@@ -473,54 +483,54 @@ suite("MooseDoc Tests", function () {
             }],
             errors: [{
                 type: "closure",
-                start: {row: 1, column: 0}, end: {row: 1, column: 2},
+                start: { row: 1, column: 0 }, end: { row: 1, column: 2 },
                 msg: "closed block before opening new one",
-                correction: { }
+                correction: {}
             },
             {
                 type: "format",
                 msg: "wrong indentation",
-                start: {row: 2, column: 0}, end: {row: 2, column: 1},
+                start: { row: 2, column: 0 }, end: { row: 2, column: 1 },
                 correction: { replace: "" }
             },
             {
                 type: "dbcheck",
-                start: {row: 3, column: 4}, end: {row: 3, column: 10},
+                start: { row: 3, column: 4 }, end: { row: 3, column: 10 },
                 msg: "required parameter(s) \"type\" not present in block: Kernels/v1",
                 correction: { insertionAfter: "\n        type = " }
             },
             {
                 type: "closure",
-                start: {row: 6, column: 0}, end: {row: 6, column: 9},
+                start: { row: 6, column: 0 }, end: { row: 6, column: 9 },
                 msg: "block opened before previous one closed",
                 correction: { insertionBefore: "[]\n" }
             },
             {
                 type: "duplication",
-                start: {row: 6, column: 0}, end: {row: 6, column: 9},
+                start: { row: 6, column: 0 }, end: { row: 6, column: 9 },
                 msg: "duplicate block name"
             },
             {
                 type: "format",
                 msg: "wrong indentation",
-                start: {row: 8, column: 0}, end: {row: 8, column: 1},
+                start: { row: 8, column: 0 }, end: { row: 8, column: 1 },
                 correction: { replace: "        " }
             },
             {
                 type: "dbcheck",
-                start: {row: 7, column: 4}, end: {row: 7, column: 15},
+                start: { row: 7, column: 4 }, end: { row: 7, column: 15 },
                 msg: "required parameter(s) \"gamma, v, variable\" not present in block: Kernels/akernel/ACBarrierFunction",
                 correction: { insertionAfter: "\n        gamma = \n        v = \n        variable = " }
             },
             {
                 type: "format",
                 msg: "multiple blank lines",
-                start: {row: 11, column: 0}, end: {row: 13, column: 0},
+                start: { row: 11, column: 0 }, end: { row: 13, column: 0 },
                 correction: { replace: "" }
             },
             {
                 type: "closure",
-                start: {row: 14, column: 0}, end: {row: 14, column: 8},
+                start: { row: 14, column: 0 }, end: { row: 14, column: 8 },
                 msg: "final block(s) unclosed",
                 correction: { insertionAfter: "[]\n" }
             }
@@ -550,27 +560,27 @@ suite("MooseDoc Tests", function () {
                 {
                     "name": "Kernels", "level": 1,
                     "description": "",
-                    "start": {row: 1, column: 0}, "end": {row: 9, column: 2},
+                    "start": { row: 1, column: 0 }, "end": { row: 9, column: 2 },
                     "inactive": [],
                     "parameters": [],
                     "children": [
                         {
                             "children": [],
                             "description": "",
-                            "start": {row: 2, column: 4}, "end": {row: 5, column: 9},
+                            "start": { row: 2, column: 4 }, "end": { row: 5, column: 9 },
                             "inactive": [],
                             "level": 2,
                             "name": "a",
                             "parameters": [
                                 {
                                     "description": "A string representing the Moose Object that will be built by this Action\n",
-                                    "start": {row: 3, column: 8}, "end": {row: 3, column: 16},
+                                    "start": { row: 3, column: 8 }, "end": { row: 3, column: 16 },
                                     "name": "type",
                                     "value": "b"
                                 },
                                 {
                                     "description": "A string representing the Moose Object that will be built by this Action\n",
-                                    "start": {row: 4, column: 8}, "end": {row: 4, column: 16},
+                                    "start": { row: 4, column: 8 }, "end": { row: 4, column: 16 },
                                     "name": "type",
                                     "value": "c"
                                 }
@@ -579,13 +589,13 @@ suite("MooseDoc Tests", function () {
                         {
                             "children": [],
                             "description": "",
-                            "start": {row: 6, column: 4}, "end": {row: 8, column: 9},
+                            "start": { row: 6, column: 4 }, "end": { row: 8, column: 9 },
                             "inactive": [],
                             "level": 2,
                             "name": "a",
                             "parameters": [{
                                 "description": "A string representing the Moose Object that will be built by this Action\n",
-                                "start": {row: 7, column: 8}, "end": {row: 7, column: 16},
+                                "start": { row: 7, column: 8 }, "end": { row: 7, column: 16 },
                                 "name": "type",
                                 "value": "a"
                             }],
@@ -596,7 +606,7 @@ suite("MooseDoc Tests", function () {
                 {
                     "name": "Kernels", "level": 1,
                     "description": "",
-                    "start": {row: 10, column: 0}, "end": {row: 11, column: 2},
+                    "start": { row: 10, column: 0 }, "end": { row: 11, column: 2 },
                     "inactive": [],
                     "parameters": [],
                     "children": [],
@@ -605,17 +615,17 @@ suite("MooseDoc Tests", function () {
             "errors": [
                 {
                     "type": "duplication",
-                    "start": {row: 4, column: 8}, "end": {row: 4, column: 16},
+                    "start": { row: 4, column: 8 }, "end": { row: 4, column: 16 },
                     "msg": "duplicate parameter name",
                 },
                 {
                     "type": "duplication",
-                    "start": {row: 6, column: 4}, "end": {row: 6, column: 9},
+                    "start": { row: 6, column: 4 }, "end": { row: 6, column: 9 },
                     "msg": "duplicate block name",
                 },
                 {
                     "type": "duplication",
-                    "start": {row: 10, column: 0}, "end": {row: 10, column: 9},
+                    "start": { row: 10, column: 0 }, "end": { row: 10, column: 9 },
                     "msg": "duplicate block name",
                 }
             ],
@@ -636,20 +646,20 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: {row: 1, column: 0}, end: {row: 3, column: 2},
+                start: { row: 1, column: 0 }, end: { row: 3, column: 2 },
                 children: [],
                 inactive: [],
                 parameters: [{
                     "name": "a",
                     "description": "",
-                    "start": {row: 2, column: 4}, "end": {row: 2, column: 9},
+                    "start": { row: 2, column: 4 }, "end": { row: 2, column: 9 },
                     "value": "1"
                 }],
             }],
             errors: [{
                 "type": "dbcheck",
                 "msg": "parameter name \"a\" was not found for this block in database: Kernels",
-                "start": {row: 2, column: 4}, "end": {row: 2, column: 9},
+                "start": { row: 2, column: 4 }, "end": { row: 2, column: 9 },
             }],
             "refs": null
         });
@@ -669,7 +679,7 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: {row: 3, column: 0}, end: {row: 4, column: 2},
+                start: { row: 3, column: 0 }, end: { row: 4, column: 2 },
                 children: [],
                 inactive: [],
                 parameters: [],
@@ -698,16 +708,16 @@ suite("MooseDoc Tests", function () {
                 "name": "Kernels",
                 "description": "",
                 "level": 1,
-                "start": {row: 1, column: 0}, "end": {row: 9, column: 2},
+                "start": { row: 1, column: 0 }, "end": { row: 9, column: 2 },
                 "children": [{
                     "description": "",
-                    "start": {row: 3, column: 4}, "end": {row: 5, column: 9},
+                    "start": { row: 3, column: 4 }, "end": { row: 5, column: 9 },
                     "inactive": [],
                     "level": 2,
                     "name": "a",
                     "parameters": [{
                         "description": "A string representing the Moose Object that will be built by this Action\n",
-                        "start": {row: 4, column: 8}, "end": {row: 4, column: 16},
+                        "start": { row: 4, column: 8 }, "end": { row: 4, column: 16 },
                         "name": "type",
                         "value": "x"
                     }],
@@ -715,13 +725,13 @@ suite("MooseDoc Tests", function () {
                 },
                 {
                     "description": "",
-                    "start": {row: 6, column: 4}, "end": {row: 8, column: 9},
+                    "start": { row: 6, column: 4 }, "end": { row: 8, column: 9 },
                     "inactive": [],
                     "level": 2,
                     "name": "b",
                     "parameters": [{
                         "description": "A string representing the Moose Object that will be built by this Action\n",
-                        "start": {row: 7, column: 8}, "end": {row: 7, column: 16},
+                        "start": { row: 7, column: 8 }, "end": { row: 7, column: 16 },
                         "name": "type",
                         "value": "y"
                     }],
@@ -730,16 +740,208 @@ suite("MooseDoc Tests", function () {
                 inactive: ["b"],
                 parameters: [{
                     "description": "If specified only the blocks named will be visited and made active",
-                    "start": {row: 2, column: 4}, "end": {row: 2, column: 18},
+                    "start": { row: 2, column: 4 }, "end": { row: 2, column: 18 },
                     "name": "active", "value": "a c"
                 }],
             }],
             errors: [{
                 "type": "refcheck",
-                "start": {row: 2, column: 4}, "end": {row: 2, column: 18},
+                "start": { row: 2, column: 4 }, "end": { row: 2, column: 18 },
                 "msg": "subblock specified in active parameter value not found: c"
             }],
             refs: null
+        });
+    });
+
+    test("References (Variables)", function () {
+        doc.text = `
+[Variables]
+    [./a]
+    [../]
+[]
+[ICs]
+    [./a]
+        value = 1
+        variable = a
+        type = ConstantIC
+    [../]
+[]`;
+        // mdoc.assessOutline().then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.assessDocument(true)).to.eventually.eql({
+            outline: [{
+                name: "Variables", description: "",
+                level: 1,
+                start: { row: 1, column: 0 }, end: { row: 4, column: 2 },
+                children: [{
+                    name: "a", description: "",
+                    level: 2,
+                    start: { row: 2, column: 4 }, end: { row: 3, column: 9 },
+                    children: [], inactive: [], parameters: [],
+                }],
+                inactive: [], parameters: [],
+            },
+            {
+                name: "ICs", description: "",
+                level: 1,
+                start: { row: 5, column: 0 }, end: { row: 11, column: 2 },
+                children: [{
+                    name: "a", description: "Sets a constant field value.",
+                    level: 2,
+                    start: { row: 6, column: 4 }, end: { row: 10, column: 9 },
+                    children: [], inactive: [],
+                    parameters: [
+                        {
+                            name: "value",
+                            description: "The value to be set in IC\n",
+                            value: "1",
+                            start: { row: 7, column: 8 }, end: { row: 7, column: 17 }
+                        }, {
+                            name: "variable",
+                            description: "The variable this initial condition is supposed to provide values for.\n",
+                            value: "a",
+                            start: { row: 8, column: 8 }, end: { row: 8, column: 20 }
+                        }, {
+                            name: "type",
+                            description: "A string representing the Moose Object that will be built by this Action\n",
+                            value: "ConstantIC",
+                            start: { row: 9, column: 8 }, end: { row: 9, column: 25 }
+                        }],
+                }], inactive: [],
+                parameters: [],
+            }],
+            errors: [],
+            refs: {
+                "Variables/a/a": {
+                    "inst": { row: 2, column: 6 },
+                    "refs": [{ row: 8, column: 8 }]
+                }
+            }
+        });
+    });
+
+    test("References (Materials)", function () {
+        doc.text = `
+[Materials]
+    [./a]
+        type = DerivativeParsedMaterial
+        f_name = b
+        function = 1
+    [../]
+[]
+`;
+        // mdoc.assessOutline().then(value => {
+        //     console.log(value);
+        // });
+        return expect(mdoc.assessDocument(true)).to.eventually.eql({
+            outline: [{
+                name: "Materials", description: "",
+                level: 1,
+                start: { row: 1, column: 0 }, end: { row: 7, column: 2 },
+                children: [{
+                    name: "a", description: "Parsed Function Material with automatic derivatives.",
+                    level: 2,
+                    start: { row: 2, column: 4 }, end: { row: 6, column: 9 },
+                    children: [], inactive: [],
+                    parameters: [{
+                        name: "type",
+                        description: "A string representing the Moose Object that will be built by this Action\n",
+                        value: "DerivativeParsedMaterial",
+                        start: { row: 3, column: 8 }, end: { row: 3, column: 39 }
+                    }, {
+                        name: "f_name",
+                        description: "Base name of the free energy function (used to name the material properties)\n",
+                        value: "b",
+                        start: { row: 4, column: 8 }, end: { row: 4, column: 18 }
+                    }, {
+                        name: "function",
+                        description: "FParser function expression for the phase free energy\n",
+                        value: "1",
+                        start: { row: 5, column: 8 }, end: { row: 5, column: 20 }
+                    }],
+                }],
+                inactive: [], parameters: [],
+            }],
+            errors: [],
+            refs: {
+                "Materials/a/b": {
+                    "inst": { row: 4, column: 17 },
+                    "refs": []
+                }
+            }
+        });
+    });
+
+    test("References (Variables and Materials)", function () {
+        doc.text = `
+[Variables]
+    [./a]
+    [../]
+[]
+[AuxVariables]
+    [./g]
+    [../]
+[]
+[Functions]
+    [./f]
+    [../]
+[]
+[Materials]
+    [./c]
+        type = DerivativeParsedMaterial
+        f_name = b
+        function = 1
+    [../]
+    [./d]
+       type = DerivativeParsedMaterial
+       function = 1
+    [../]
+    [./e]
+       type = GenericConstantMaterial
+       prop_names  = 'x y'
+       prop_values = '0.7 0.5'
+    [../]
+[]
+[Kernels]
+    [./ACInterface]
+        type = ACInterface
+        variable = a
+        kappa_name = b
+    [../]
+[]`;
+        // mdoc.assessDocument(true).then(value => {
+        //     console.log(value);
+        // }).catch(reason => console.log(reason));
+        return expect(mdoc.assessDocument(true)).to.eventually.be.an('object').with.property('refs').eql({
+            "Variables/a/a": {
+                "inst": { row: 2, column: 6 },
+                "refs": [{ row: 32, column: 8 }]
+            },
+            "AuxVariables/g/g": {
+                "inst": { row: 6, column: 6 },
+                "refs": []
+            },
+            "Functions/f/f": {
+                "inst": { row: 10, column: 6 },
+                "refs": []
+            },
+            "Materials/c/b": {
+                "inst": { row: 16, column: 17 },
+                "refs": [{ row: 33, column: 8 }]
+            },
+            "Materials/d/F": {
+                "inst": { row: 19, column: 0 },
+                "refs": []
+            },
+            "Materials/e/x": {
+                "inst": { row: 25, column: 22 },
+                "refs": []
+            },
+            "Materials/e/y": {
+                "inst": { row: 25, column: 24 },
+                "refs": []
+            }
         });
     });
 });

@@ -6,7 +6,11 @@ import * as ppath from 'path';
 
 import { MooseSyntaxDB } from './moose_syntax';
 import { Document, Position } from './moose_doc';
-import { DefinitionProvider, HoverProvider, OnTypeFormattingEditProvider, DocumentFormattingEditProvider, CompletionItemProvider, DocumentSymbolProvider, CodeActionsProvider } from './features';
+import {
+    DefinitionProvider, HoverProvider, OnTypeFormattingEditProvider,
+    DocumentFormattingEditProvider, CompletionItemProvider,
+    DocumentSymbolProvider, CodeActionsProvider, ReferenceProvider
+} from './features';
 
 export class VSDoc implements Document {
     private vsdoc: vscode.TextDocument;
@@ -164,9 +168,9 @@ export function activate(context: vscode.ExtensionContext) {
     let linter = new CodeActionsProvider(syntaxDB, context.subscriptions);
     vscode.languages.registerCodeActionsProvider(moose_selector, linter);
 
-    // context.subscriptions.push(
-    //     vscode.languages.registerReferenceProvider(
-    //         moose_selector, new ReferenceProvider(mooseDoc)));
+    context.subscriptions.push(
+        vscode.languages.registerReferenceProvider(
+            moose_selector, new ReferenceProvider(syntaxDB)));
 
 }
 

@@ -82,19 +82,20 @@ export interface SyntaxError {
 /** a dictionary to hold variables and where they were instantiated and referenced in the doc */
 export interface VariableRefs {
     [id: string]: { // the key for the main block
-        [id: string]: { // the key for the variable name
-            inst: Position, // the row on which the variable is instantiated
-            refs: Position[] // rows at which the variable is referenced
-        }
+        inst: Position, // the row on which the variable is instantiated
+        refs: Position[] // rows at which the variable is referenced
     };
 }
 
 /** an interface to describe a value in the document */
 export interface ValueNode {
+    name: string;
     description: string;
+    defPath: string[]; // path to subblock
     // paramNode: moosedb.ParamNode;
     file?: string; // path to the definition (if undefined then in same document as value)
     defPosition: Position; // position of the definition
+    defType?: string; // the type of the variable (used for materials)
 }
 
 function __guard__(value: RegExpMatchArray | null,
@@ -116,6 +117,7 @@ let blockOpenTop = /^\s*\[([^.\/][^\/]*)\]/;
 let blockCloseTop = /^\s*\[\]/;
 let blockOpenOneLevel = /^\s*\[\.\/([^.\/]+)\]/;
 let blockCloseOneLevel = /^\s*\[\.\.\/\]/;
+
 
 /**
  * A class to manage a MOOSE input document
@@ -153,7 +155,11 @@ export class MooseDoc {
         return this.syntaxdb;
     }
 
-    private static getWordAt(line: string, column: number, regex: string = "_0-9a-zA-Z") {
+    /** given a position in the document, get the word that it sits on
+     * 
+     * @param regex defines the characters that a word comprises of
+     */
+    private static getWordAt(line: string, column: number, regex: string = "-_0-9a-zA-Z") {
 
         let word: string;
         let range: [number, number];
@@ -191,8 +197,8 @@ export class MooseDoc {
 
     }
 
-    /** find the blocks which may contain variable referenced by the param value */
-    private getVariableBlocks(param: moosedb.ParamNode) {
+    /** find the blocks which may contain the definition of a referencing parameter */
+    private getDefinitionBlocks(param: moosedb.ParamNode) {
 
         let varType2Blocks: { [id: string]: string[] } = {
             NonlinearVariableName: ['Variables'],
@@ -202,7 +208,6 @@ export class MooseDoc {
             PostprocessorName: ['Postprocessors'],
             UserObjectName: ['Postprocessors', 'UserObjects'],
             VectorPostprocessorName: ['VectorPostprocessors'],
-            MaterialPropertyName: ["Materials"]
         };
 
         if (param.cpp_type in varType2Blocks) {
@@ -220,6 +225,69 @@ export class MooseDoc {
 
     }
 
+    //** find all material definitions  */
+    private async getAllMaterialDefinitions() {
+        let defs = [];
+        for (let definition of this.yieldMaterialNameList()) {
+            if (definition.name === null) {
+                // we want to try to find a default name
+                // TODO as noted in yieldMaterialNameList this could be part of that, except async generators are not available in Node < 10
+                let paramList = await this.syntaxdb.fetchParameterList(["Materials", definition.type]);
+                for (let mparam of paramList) {
+                    if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0) {
+                        definition.name = mparam.default;
+                        break;
+                    }
+                }
+            }
+            if (definition.name === null) {
+                // TODO raise warning if can't find name of a material block
+            } else {
+                defs.push(definition);
+            }
+        }
+        return defs;
+    }
+
+    /** find a material definition for a referencing parameter */
+    private async getMaterialDefinition(param: moosedb.ParamNode, value: string) {
+        let node: ValueNode | null = null;
+        let match = stdVector.exec(param.cpp_type);
+        if (param.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
+            // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
+            // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
+            for (let { name, position, block, type } of this.yieldMaterialNameList()) {
+                if (name === value) {
+                    node = {
+                        name: name,
+                        defType: type,
+                        defPath: ["Materials", block],
+                        description: "Referenced Material",
+                        defPosition: position
+                    };
+                    return node;
+                } else if (name === null) {
+                    // TODO as noted in yieldMaterialNameList this could be part of that, except async generators are not available in Node < 10
+                    // we want to try to find a default name
+                    let paramList = await this.syntaxdb.fetchParameterList(["Materials", type]);
+                    for (let mparam of paramList) {
+                        if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default === value) {
+                            node = {
+                                name: mparam.default,
+                                defType: type,
+                                defPath: ["Materials", block],
+                                description: "Referenced Material",
+                                defPosition: position
+                            };
+                            return node;
+                        }
+                    }
+                }
+            }
+        }
+        return node;
+    }
+
     /** find the node and path of the variable which the value is referencing
      * 
      * @param value the value to search for
@@ -230,51 +298,25 @@ export class MooseDoc {
     private async findValueReference(value: string, paramName: string, valuePath: string[], explicitType: string | null = null) {
 
         let node: ValueNode | null = null;
-        let configPath: string[] | null = null;
 
         let paramsList = await this.syntaxdb.fetchParameterList(valuePath, explicitType);
 
         for (let param of paramsList) {
             if (param.name === paramName) {
 
-                let blockNames = this.getVariableBlocks(param);
+                // search for reference definition in blocks that define variables
+                let blockNames = this.getDefinitionBlocks(param);
                 if ((param.name === 'active' || param.name === "inactive") && valuePath.length === 1) {
                     blockNames = valuePath;
                 }
-
-                if (blockNames && blockNames.indexOf('Materials') >= 0) {
-                    // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
-                    // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
-                    for (let { name, position, block, type } of this.yieldMaterialNameList()) {
-                        if (name === value) {
-                            configPath = ["Materials", block, type, name];
-                            node = {
-                                description: "Referenced Material",
-                                defPosition: position
-                            };
-                            return { pnode: node, path: configPath };
-                        } else if (name === null) {
-                            // we want to try to find a default name
-                            let paramList = await this.syntaxdb.fetchParameterList(["Materials", type]);
-                            for (let mparam of paramList) {
-                                if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default === value) {
-                                    configPath = ["Materials", block, type, mparam.default];
-                                    node = {
-                                        description: "Referenced Material",
-                                        defPosition: position
-                                    };
-                                    return { pnode: node, path: configPath };
-                                }
-                            }
-                        }
-                    }
-                } else if (blockNames) {
+                if (blockNames) {
                     for (let blockName of blockNames) {
                         for (let { name, position } of this.yieldSubBlockList([blockName])) {
                             if (name === value) {
                                 // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
-                                configPath = [blockName, name];
                                 node = {
+                                    name: name,
+                                    defPath: [blockName, name],
                                     description: "Referenced " + blockName.slice(0, blockName.length - 1),
                                     defPosition: position
                                 };
@@ -285,18 +327,20 @@ export class MooseDoc {
                             break;
                         }
                     }
+                    // else if (hasType('FileName') || hasType('MeshFileName')) {
+                    //     // let filePath = ppath.dirname(this.getDoc().getPath());
+                    //     // TODO filename ValueNodes (what configpath?)
+                    //     // need to convert relative paths to absolute path
+                } else {
+                    // search for reference definition in the Materials block
+                    node = await this.getMaterialDefinition(param, value);
                 }
-                // else if (hasType('FileName') || hasType('MeshFileName')) {
-                //     // let filePath = ppath.dirname(this.getDoc().getPath());
-                //     // TODO filename ValueNodes (what configpath?)
-                //     // need to convert relative paths to absolute path
-                // }
-                return { pnode: node, path: configPath };
+
+                return node;
             }
 
         }
-
-        return { pnode: node, path: configPath };
+        return node;
     }
 
     /** find node for a cursor position, and the path to it
@@ -362,10 +406,10 @@ export class MooseDoc {
         } else if (!!(rmatch = /^\s*([^\s#=\]]+)\s*=.*/.exec(line))) {
             // value of parameter
             let paramName = rmatch[1];
-            let { pnode, path } = await this.findValueReference(word, paramName, configPath, explicitType);
-            if (pnode && path) {
-                configPath = path;
-                node = pnode;
+            let vnode = await this.findValueReference(word, paramName, configPath, explicitType);
+            if (vnode) {
+                configPath = vnode.defPath;
+                node = vnode;
             }
         }
 
@@ -391,7 +435,7 @@ export class MooseDoc {
         let match: RegExpExecArray | null;
 
         // get current line up to the cursor position
-        let line = this.getDoc().getTextInRange({row: pos.row, column: 0}, pos);
+        let line = this.getDoc().getTextInRange({ row: pos.row, column: 0 }, pos);
         let prefix = this.getPrefix(line);
 
         let { configPath, explicitType } = await this.getCurrentConfigPath(pos);
@@ -448,7 +492,7 @@ export class MooseDoc {
         let { row } = pos;
         let typePath;
 
-        let line = this.getDoc().getTextInRange({row: pos.row, column: 0}, pos);
+        let line = this.getDoc().getTextInRange({ row: pos.row, column: 0 }, pos);
 
         let normalize = (configPath: string[]) => ppath.join.apply(undefined, configPath).split(ppath.sep);
 
@@ -771,6 +815,7 @@ export class MooseDoc {
                     // we want to try to find a default f_name or function_name;
                     // let match = this.syntaxdb.fetchParameterList(["Materials", subBlockType])
                     // However, calling await in generators is only supported natively in Node v10+
+                    // https://stackoverflow.com/questions/36107171/how-do-i-use-await-inside-a-generator
                     // so for now we defer this to the calling function
                     yield {
                         name: null,
@@ -795,15 +840,23 @@ export class MooseDoc {
                 if (regExec = blockType.exec(line)) {
                     subBlockType = regExec[1];
                 } else if (regExec = /^\s*(f_name|h_name|function_name)\s*=\s*[\'\"]*([^#\s\'\"]+)/.exec(line)) {
+                    if (matNames.length > 0) {
+                        // TODO raise warning if the material block has multiple definitions
+                        // throw Error('multiple definitions of the material name found in same block: ' + subBlockName);
+                    }
                     // find f_name or function_name (used for most materials)
                     let f_name = regExec[2];
                     matNames = [{
                         name: f_name,
                         block: subBlockName,
                         type: "",
-                        position: { row: row, column: line.search(RegExp("[\\s\\\'\\\"]" + f_name + "[\\s\\\'\\\"]")) + 1 } as Position
+                        position: { row: row, column: line.search(RegExp("[=\\s\\\'\\\"]" + f_name + "([\\s\\\'\\\"]|$)")) + 1 } as Position
                     }];
                 } else if (regExec = /^\s*prop_names\s*=\s*[\'\"]*([^#\'\"]+)/.exec(line)) {
+                    if (matNames.length > 0) {
+                        // TODO raise warning if the material block has multiple definitions
+                        // throw Error('multiple definitions of the material name found in same block: ' + subBlockName);
+                    }
                     // find prop_names (used for constants)
                     let p_names = regExec[1].split(/\s+/).filter(Boolean); // filter removes zero-length strings
                     // TODO check prop_names can't overflow on to new line 
@@ -813,7 +866,7 @@ export class MooseDoc {
                             name: p_name,
                             block: subBlockName,
                             type: "",
-                            position: { row: row, column: line.search(RegExp("[\\s\\\'\\\"]" + p_name + "[\\s\\\'\\\"]")) + 1 } as Position
+                            position: { row: row, column: line.search(RegExp("[=\\s\\\'\\\"]" + p_name + "([\\s\\\'\\\"]|$)")) + 1 } as Position
                         });
                     }
                 }
@@ -1155,13 +1208,20 @@ export class MooseDoc {
                 "UserObjects", "Functions"
             ])) {
                 if (name !== null) {
-                    if (!(mainBlock in refsDict)) {
-                        refsDict[mainBlock] = {};
-                    }
-                    refsDict[mainBlock][name] = { inst: position, refs: [] };
+                    // if (!(mainBlock in refsDict)) {
+                    //     refsDict[mainBlock] = {};
+                    // }
+                    refsDict[[mainBlock, name, name].join("/")] = { inst: position, refs: [] };
                 }
             }
-            // TODO add material variables
+            for (let { name, block, position } of await this.getAllMaterialDefinitions()) {
+                if (name !== null) {
+                    // if (!("Materials" in refsDict)) {
+                    //     refsDict["Materials"] = {};
+                    // }
+                    refsDict[["Materials", block, name].join("/")] = { inst: position, refs: [] };
+                }
+            }
         }
 
         // step through document
@@ -1201,8 +1261,8 @@ export class MooseDoc {
             if (firstChar >= 0 && firstChar !== indentLevel * this.indentLength) {
                 syntaxErrors.push({
                     type: "format",
-                    start: {row: row, column: 0},
-                    end: {row: row, column: firstChar},
+                    start: { row: row, column: 0 },
+                    end: { row: row, column: firstChar },
                     correction: {
                         replace: " ".repeat(indentLevel * this.indentLength),
                     },
@@ -1221,8 +1281,8 @@ export class MooseDoc {
             }
             syntaxErrors.push({
                 type: "closure",
-                start: {row: row, column: 0},
-                end: {row: row, column: line.length},
+                start: { row: row, column: 0 },
+                end: { row: row, column: line.length },
                 msg: 'final block(s) unclosed',
                 correction: {
                     // insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
@@ -1246,8 +1306,8 @@ export class MooseDoc {
             if (emptyLines.length > 1) {
                 syntaxErrors.push({
                     type: "format",
-                    start: {row: emptyLines[0], column: 0},
-                    end: {row: row - 1, column: line === null ? 0 : line.length},
+                    start: { row: emptyLines[0], column: 0 },
+                    end: { row: row - 1, column: line === null ? 0 : line.length },
                     msg: "multiple blank lines",
                     correction: {
                         replace: ""
@@ -1272,8 +1332,8 @@ export class MooseDoc {
             }
             syntaxErrors.push({
                 type: "closure",
-                start: {row: row, column: 0},
-                end: {row: row, column: line.length},
+                start: { row: row, column: 0 },
+                end: { row: row, column: line.length },
                 msg: 'block opened before previous one closed',
                 correction: {
                     // insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
@@ -1291,8 +1351,8 @@ export class MooseDoc {
         if (outlineItems.map(o => o.name).indexOf(blockName) !== -1) {
             syntaxErrors.push({
                 type: "duplication",
-                start: {row: row, column: 0},
-                end: {row: row, column: line.length},
+                start: { row: row, column: 0 },
+                end: { row: row, column: line.length },
                 msg: 'duplicate block name'
             });
         }
@@ -1302,7 +1362,7 @@ export class MooseDoc {
             name: blockName,
             description: "",
             level: 1,
-            start: {row: row, column: line.search(/\[/)},
+            start: { row: row, column: line.search(/\[/) },
             end: null,
             children: [],
             parameters: [],
@@ -1324,8 +1384,8 @@ export class MooseDoc {
             }
             syntaxErrors.push({
                 type: "closure",
-                start: {row: row, column: 0},
-                end: {row: row, column: line.length},
+                start: { row: row, column: 0 },
+                end: { row: row, column: line.length },
                 msg: 'closed parent block before closing children',
                 correction: {
                     // insertionBefore: "[../]\n".repeat(currLevel - 1)
@@ -1339,8 +1399,8 @@ export class MooseDoc {
         else if (currLevel < 1) {
             syntaxErrors.push({
                 type: "closure",
-                start: {row: row, column: 0},
-                end: {row: row, column: line.length},
+                start: { row: row, column: 0 },
+                end: { row: row, column: line.length },
                 msg: 'closed block before opening new one',
                 correction: {
                     // insertionBefore: "[${1:name}\n]" // TODO correct with snippets
@@ -1359,8 +1419,8 @@ export class MooseDoc {
         if (currLevel === 0) {
             syntaxErrors.push({
                 type: "closure",
-                start: {row: row, column: 0},
-                end: {row: row, column: line.length},
+                start: { row: row, column: 0 },
+                end: { row: row, column: line.length },
                 msg: 'opening sub-block before main block open',
                 correction: {
                     // insertionBefore: "[${1:name}]\n" // TODO correct with snippets
@@ -1385,7 +1445,7 @@ export class MooseDoc {
             name: currBlockName,
             description: "",
             level: currLevel,
-            start: {row: row, column: line.search(/\[/)},
+            start: { row: row, column: line.search(/\[/) },
             end: null,
             children: [],
             parameters: [],
@@ -1400,16 +1460,16 @@ export class MooseDoc {
         if (currLevel === 0) {
             syntaxErrors.push({
                 type: "closure",
-                start: {row: row, column: 0},
-                end: {row: row, column: line.length},
+                start: { row: row, column: 0 },
+                end: { row: row, column: line.length },
                 msg: 'closing sub-block before opening main block',
             });
         }
         else if (currLevel === 1) {
             syntaxErrors.push({
                 type: "closure",
-                start: {row: row, column: 0},
-                end: {row: row, column: line.length},
+                start: { row: row, column: 0 },
+                end: { row: row, column: line.length },
                 msg: 'closing sub-block before opening one',
             });
         }
@@ -1434,7 +1494,7 @@ export class MooseDoc {
             blockItem.parameters.push({
                 name: paramName,
                 description: "",
-                start: { row: row, column: line.search(/[^\s]/)},
+                start: { row: row, column: line.search(/[^\s]/) },
                 end: { row: row, column: line.length }, // TODO end before comments
                 value: paramValue
             });
@@ -1624,7 +1684,12 @@ export class MooseDoc {
                     let pnode = nodeParamDict[npname];
                     if (pnode.required === "Yes" && pnode.default === "") {
                         if (!((npname in paramDict) || (npname in globalParamDict))) {
-                            missingParams.push(npname);
+                            if (npname === "variable" && parentPath.length > 1 && ["Variables", "AuxVariables"].indexOf(parentPath[0]) >= 0) {
+                                // e.g. if [./InitialCondition] is subblock of variable it does not require the "variable" parameter
+                                // TODO generalise this rule
+                            } else {
+                                missingParams.push(npname);
+                            }
                         }
                     }
                 }
@@ -1646,28 +1711,38 @@ export class MooseDoc {
                 }
             }
 
-            // update reference dict 
+            // update reference dict
             if (refsDict !== null) {
                 for (let pname in paramDict) {
                     if (!(pname in nodeParamDict)) { continue; }
                     let node = nodeParamDict[pname];
-                    let vblocks = this.getVariableBlocks(node);
-                    if (vblocks === null) { continue; }
-                    let instanceInBlock = null;
-                    for (let vblock of vblocks) {
-                        if (vblock in refsDict && pname in refsDict[vblock]) {
-                            instanceInBlock = vblock;
-                            break;
+                    let vBlocks = this.getDefinitionBlocks(node);
+                    for (let param of paramDict[pname]) {
+                        if (!param.value) { continue; }
+                        if (vBlocks !== null) {
+                            let instanceInBlock = null;
+                            for (let vBlock of vBlocks) {
+                                if ([vBlock, param.value, param.value].join("/") in refsDict) {
+                                    // if (vBlock in refsDict && block.name in refsDict[vBlock] && param.value in refsDict[vBlock][block.name]) {
+                                    instanceInBlock = vBlock;
+                                    break;
+                                }
+                            }
+                            if (instanceInBlock === null) { continue; }
+                            refsDict[[instanceInBlock, param.value, param.value].join("/")]["refs"].push(param.start);
+                        } else {
+                            let valNode = await this.getMaterialDefinition(node, param.value);
+                            if (valNode) {
+                                if ([valNode.defPath[0], valNode.defPath[1], param.value].join("/") in refsDict) {
+                                    refsDict[[valNode.defPath[0], valNode.defPath[1], param.value].join("/")]["refs"].push(param.start);
+                                }
+                            }
                         }
                     }
-                    if (instanceInBlock === null) { continue; }
-                    for (let param of paramDict[pname]) {
-                        refsDict[instanceInBlock][pname]["refs"].push(param.start);
-                    }                        
                 }
             }
 
-            // TODO checks of values
+            // TODO checks of values (e.g. reference is available)
 
         }
 
@@ -1725,7 +1800,7 @@ export class MooseDoc {
             configPath.push(item.name);
             item = item.children[item.children.length - 1];
             if (item.end === null) {
-                let errors = await this.closeSingleBlock(item, { row: row, column: 0}, configPath, globalParamDict, refsDict);
+                let errors = await this.closeSingleBlock(item, { row: row, column: 0 }, configPath, globalParamDict, refsDict);
                 syntaxErrors.push(...errors);
                 levelsClosed++;
             }
