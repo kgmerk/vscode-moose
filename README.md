@@ -17,6 +17,7 @@ This extension provides language support and IntelliSense for input files of MOO
 - [File Diagnostics and Fixes](#file-diagnostics)
 - [Format Document](#auto-formatting)
 - Peek/GoTo Referenced Variable/Material Definitions
+- Find All References of Variables/Functions/Materials
 - Peek/GoTo C++ Source Files
 
 ### Auto Completion Demo
@@ -143,6 +144,10 @@ Fixed some bugs:
 - added CodeActions to provide errors corrections
 - fixed bug whereby assessing outline/errors would show for wrong document
 - general code refactoring
+
+### 0.9.1
+
+- added reference provider functionality
 
 ## Acknowledgements
 
