@@ -31,7 +31,7 @@ export interface JsonNode {
 }
 
 // interface for node match
-export interface nodeMatch {
+export interface NodeMatch {
     node: SyntaxNode;
     fuzz: number;
     fuzzyOnLast: boolean;
@@ -145,7 +145,7 @@ export class MooseSyntaxDB {
      */
     public async createFiles(appPath: string, allowTestObjs: boolean = false) {
 
-        console.log("creating files")
+        this.handleLog("creating files");
         const writeFile = util.promisify(fs.writeFile);
         let appDir = ppath.parse(appPath).dir;
 
@@ -327,7 +327,7 @@ export class MooseSyntaxDB {
 
     /** recurse through the nodes sub-blocks to populate a match list 
     */
-    private recurseSyntaxNode(node: SyntaxNode, configPath: string[], matchList: nodeMatch[]) {
+    private recurseSyntaxNode(node: SyntaxNode, configPath: string[], matchList: NodeMatch[]) {
         let yamlPath = node.name.substr(1).split('/');
 
         // no point in recursing deeper
@@ -384,7 +384,7 @@ export class MooseSyntaxDB {
         // we need to match this to one node in the yaml tree. multiple matches may
         // occur we will later select the most specific match
         let data = await this.retrieveSyntaxNodes();
-        let matchList: nodeMatch[] = [];
+        let matchList: NodeMatch[] = [];
 
         for (let node of data) {
             this.recurseSyntaxNode(node, configPath, matchList);
@@ -415,7 +415,7 @@ export class MooseSyntaxDB {
     // lazily add json data to a node (i.e. only add it when needed)
     private async addJSONData(node: SyntaxNode, configPath: string[]) {
 
-        let success = false
+        let success = false;
 
         if (this.jsonNodes === null) {
             return success;

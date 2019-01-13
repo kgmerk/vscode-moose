@@ -25,21 +25,14 @@ export interface Document {
      */
     getPath(): string;
     getLineCount(): number;
-    /**
-     * get full text of document
-     */
+    // get full text of document
     // getText(): string;
     /**
      * get text within a range
-     * 
-     * @param start [row, column]
-     * @param end [row, column]
      */
-    getTextInRange(start: [number, number], end: [number, number]): string;
+    getTextInRange(start: Position, end: Position): string;
     /**
      * get text for a single row/line
-     * 
-     * @param row
      */
     getTextForRow(row: number): string;
 }
@@ -54,15 +47,15 @@ export interface Completion {
 }
 
 export interface OutlineParamItem {
-    start: [number, number];
-    end: [number, number];
+    start: Position;
+    end: Position;
     name: string;
     description: string;
     value: string | null;
 }
 export interface OutlineBlockItem {
-    start: [number, number];
-    end: [number, number] | null;
+    start: Position;
+    end: Position | null;
     level: number;
     name: string;
     description: string;
@@ -77,13 +70,22 @@ export interface SyntaxError {
     // dbcheck =  checks against the syntax database (e.g. block or parameter not found)
     // format = formatting warnings
     type: "closure" | "duplication" | "refcheck" | "dbcheck" | "format";
-    start: [number, number];
-    end: [number, number];
+    start: Position;
+    end: Position;
     msg: string;
     correction?: {
         insertionBefore?: string;
         insertionAfter?: string;
         replace?: string;
+    };
+}
+/** a dictionary to hold variables and where they were instantiated and referenced in the doc */
+export interface VariableRefs {
+    [id: string]: { // the key for the main block
+        [id: string]: { // the key for the variable name
+            inst: Position, // the row on which the variable is instantiated
+            refs: Position[] // rows at which the variable is referenced
+        }
     };
 }
 
@@ -124,7 +126,7 @@ let blockCloseOneLevel = /^\s*\[\.\.\/\]/;
  * @param doc the document object
  * @param syntaxdb the object containing the syntax database
  * @param indentLength the number of spaces per indent
- * 
+  * 
  */
 export class MooseDoc {
 
@@ -135,7 +137,7 @@ export class MooseDoc {
     constructor(syntaxdb: moosedb.MooseSyntaxDB, doc: Document | null = null, indentLength: number = 4) {
         this.doc = doc;
         this.syntaxdb = syntaxdb;
-        this.indentLength = indentLength
+        this.indentLength = indentLength;
     }
 
     public setDoc(doc: Document) {
@@ -189,6 +191,35 @@ export class MooseDoc {
 
     }
 
+    /** find the blocks which may contain variable referenced by the param value */
+    private getVariableBlocks(param: moosedb.ParamNode) {
+
+        let varType2Blocks: { [id: string]: string[] } = {
+            NonlinearVariableName: ['Variables'],
+            AuxVariableName: ['AuxVariables'],
+            VariableName: ['Variables', 'AuxVariables'],
+            FunctionName: ['Functions'],
+            PostprocessorName: ['Postprocessors'],
+            UserObjectName: ['Postprocessors', 'UserObjects'],
+            VectorPostprocessorName: ['VectorPostprocessors'],
+            MaterialPropertyName: ["Materials"]
+        };
+
+        if (param.cpp_type in varType2Blocks) {
+            return varType2Blocks[param.cpp_type];
+        }
+        let match = stdVector.exec(param.cpp_type);
+        if (match !== null) {
+            let vecType = match[2];
+            if (vecType in varType2Blocks) {
+                return varType2Blocks[vecType];
+            }
+        }
+
+        return null;
+
+    }
+
     /** find the node and path of the variable which the value is referencing
      * 
      * @param value the value to search for
@@ -206,55 +237,12 @@ export class MooseDoc {
         for (let param of paramsList) {
             if (param.name === paramName) {
 
-                let hasType = (type: string, atype: string | null = null) => {
-                    return param.cpp_type === type || this.isVectorOf(param.cpp_type, atype ? atype : type);
-                };
-
-                // if (hasType('bool')) {
-                //     // no node
-                // } else if (hasType('MooseEnum', 'MultiMooseEnum')) {
-                //     // no node
-                // } else if (hasType('OutputName')) {
-                //     // no node
-                // }
-
-                let blockNames: string[] | null = null;
-                if (hasType('NonlinearVariableName')) {
-                    blockNames = ['Variables'];
-                } else if (hasType('AuxVariableName')) {
-                    blockNames = ['AuxVariables'];
-                } else if (hasType('VariableName')) {
-                    blockNames = ['Variables', 'AuxVariables'];
-                } else if (hasType('FunctionName')) {
-                    blockNames = ['Functions'];
-                } else if (hasType('PostprocessorName')) {
-                    blockNames = ['Postprocessors'];
-                } else if (hasType('UserObjectName')) {
-                    blockNames = ['Postprocessors', 'UserObjects'];
-                } else if (hasType('VectorPostprocessorName')) {
-                    blockNames = ['VectorPostprocessors'];
-                } else if ((param.name === 'active' || param.name === "inactive") && valuePath.length === 1) {
+                let blockNames = this.getVariableBlocks(param);
+                if ((param.name === 'active' || param.name === "inactive") && valuePath.length === 1) {
                     blockNames = valuePath;
                 }
 
-                if (blockNames) {
-                    for (let blockName of blockNames) {
-                        for (let { name, row } of this.yieldSubBlockList([blockName])) {
-                            if (name === value) {
-                                // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
-                                configPath = [blockName, name];
-                                node = {
-                                    description: "Referenced " + blockName.slice(0, blockName.length - 1),
-                                    defPosition: { row: row, column: 0 }
-                                };
-                                break;
-                            }
-                        }
-                        if (node) {
-                            break;
-                        }
-                    }
-                } else if (hasType('MaterialPropertyName')) {
+                if (blockNames && blockNames.indexOf('Materials') >= 0) {
                     // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
                     // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
                     for (let { name, position, block, type } of this.yieldMaterialNameList()) {
@@ -266,7 +254,7 @@ export class MooseDoc {
                             };
                             return { pnode: node, path: configPath };
                         } else if (name === null) {
-                            // we want to try to find a default f_name
+                            // we want to try to find a default name
                             let paramList = await this.syntaxdb.fetchParameterList(["Materials", type]);
                             for (let mparam of paramList) {
                                 if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default === value) {
@@ -280,11 +268,29 @@ export class MooseDoc {
                             }
                         }
                     }
-                } else if (hasType('FileName') || hasType('MeshFileName')) {
-                    // let filePath = ppath.dirname(this.getDoc().getPath());
-                    // TODO filename ValueNodes (what configpath?)
-                    // need to convert relative paths to absolute path
+                } else if (blockNames) {
+                    for (let blockName of blockNames) {
+                        for (let { name, position } of this.yieldSubBlockList([blockName])) {
+                            if (name === value) {
+                                // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
+                                configPath = [blockName, name];
+                                node = {
+                                    description: "Referenced " + blockName.slice(0, blockName.length - 1),
+                                    defPosition: position
+                                };
+                                break;
+                            }
+                        }
+                        if (node) {
+                            break;
+                        }
+                    }
                 }
+                // else if (hasType('FileName') || hasType('MeshFileName')) {
+                //     // let filePath = ppath.dirname(this.getDoc().getPath());
+                //     // TODO filename ValueNodes (what configpath?)
+                //     // need to convert relative paths to absolute path
+                // }
                 return { pnode: node, path: configPath };
             }
 
@@ -300,8 +306,8 @@ export class MooseDoc {
     */
     public async findCurrentNode(pos: Position, regex: string = "_0-9a-zA-Z") {
 
-        let match: null | moosedb.nodeMatch = null;
-        let node: moosedb.SyntaxNode | moosedb.ParamNode | ValueNode | null = null
+        let match: null | moosedb.NodeMatch = null;
+        let node: moosedb.SyntaxNode | moosedb.ParamNode | ValueNode | null = null;
         let rmatch: RegExpExecArray | null;
 
         let line = this.getDoc().getTextForRow(pos.row);
@@ -385,7 +391,7 @@ export class MooseDoc {
         let match: RegExpExecArray | null;
 
         // get current line up to the cursor position
-        let line = this.getDoc().getTextInRange([pos.row, 0], [pos.row, pos.column]);
+        let line = this.getDoc().getTextInRange({row: pos.row, column: 0}, pos);
         let prefix = this.getPrefix(line);
 
         let { configPath, explicitType } = await this.getCurrentConfigPath(pos);
@@ -442,7 +448,7 @@ export class MooseDoc {
         let { row } = pos;
         let typePath;
 
-        let line = this.getDoc().getTextInRange([pos.row, 0], [pos.row, pos.column]);
+        let line = this.getDoc().getTextInRange({row: pos.row, column: 0}, pos);
 
         let normalize = (configPath: string[]) => ppath.join.apply(undefined, configPath).split(ppath.sep);
 
@@ -547,7 +553,7 @@ export class MooseDoc {
         let completion: string;
 
         // get the postfix (to determine if we need to append a ] or not)
-        let postLine = this.getDoc().getTextInRange([pos.row, pos.column], [pos.row, pos.column + 1]);
+        let postLine = this.getDoc().getTextInRange(pos, { row: pos.row, column: pos.column + 1 });
         let blockPostfix = postLine.length > 0 && postLine[0] === ']' ? '' : ']';
 
         // handle relative paths
@@ -607,12 +613,9 @@ export class MooseDoc {
 
     /** checks if this is a vector type build the vector cpp_type name 
      * for a given single type (checks for gcc and clang variants)
-     * 
-     * @param yamlType 
-     * @param type 
      */
-    private isVectorOf(yamlType: string, type: string) {
-        let match = stdVector.exec(yamlType);
+    private isVectorOf(cpp_type: string, type: string) {
+        let match = stdVector.exec(cpp_type);
         return (match !== null) && (match[2] === type);
     }
 
@@ -634,14 +637,14 @@ export class MooseDoc {
             mainBlock: string
             name: string | null,
             properties: { [index: string]: string },
-            row: number
-        } = { mainBlock: '', name: '', properties: {}, row: 0 };
+            position: Position
+        } = { mainBlock: '', name: '', properties: {}, position: { row: 0, column: 0 } };
         let mainBlock: {
             mainBlock: string
             name: string | null,
             properties: { [index: string]: string },
-            row: number
-        } = { mainBlock: '', name: null, properties: {}, row: 0 };
+            position: Position
+        } = { mainBlock: '', name: null, properties: {}, position: { row: 0, column: 0 } };
 
         let nlines = this.getDoc().getLineCount();
 
@@ -666,7 +669,7 @@ export class MooseDoc {
                         mainBlock: mainBlockName,
                         name: null,
                         properties: {},
-                        row: row
+                        position: { row: row, column: line.indexOf('[') }
                     };
                 }
             } else if (blockCloseTop.test(line)) {
@@ -691,7 +694,7 @@ export class MooseDoc {
                             mainBlock: mainBlockName,
                             name: blockopen[1],
                             properties: {},
-                            row: row
+                            position: { row: row, column: line.indexOf('[') + 2 }
                         };
                     }
                 }
@@ -778,7 +781,7 @@ export class MooseDoc {
                 }
                 if (level === 0 && subBlockType !== null) {
                     for (let matname of matNames) {
-                        matname.type = subBlockType
+                        matname.type = subBlockType;
                         yield matname;
                     }
                 }
@@ -890,8 +893,8 @@ export class MooseDoc {
         let completions: Completion[] = [];
         let singleOK = !hasSpace;
         let vectorOK = isQuoted || !hasSpace;
-        let hasType = (type: string, atype: string | null = null) => {
-            return param.cpp_type === type && singleOK || this.isVectorOf(param.cpp_type, atype ? atype : type) && vectorOK;
+        let hasType = (type: string, vectorType: string | null = null) => {
+            return param.cpp_type === type && singleOK || this.isVectorOf(param.cpp_type, vectorType ? vectorType : type) && vectorOK;
         };
 
         if (hasType('bool')) {
@@ -1116,11 +1119,14 @@ export class MooseDoc {
      * - **outline**: a heirarchical outline of the the documents blocks and subblocks
      * - **errors**: a list of syntactical errors
      * 
+     * @param gatherReferences if true also return a `refs` key containing variable reference data
+     * 
      */
-    public async assessDocument() {
+    public async assessDocument(gatherReferences: boolean = false) {
 
         let outlineItems: OutlineBlockItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
+        let refsDict: VariableRefs | null = null;
 
         let line: string = "";
         let currLevel = 0;
@@ -1141,7 +1147,22 @@ export class MooseDoc {
                 globalParamDict[param] = properties[param];
             }
         }
-        // TODO also gather variable definitions
+        // gather variable definitions
+        if (gatherReferences) {
+            refsDict = {};
+            for (let { mainBlock, name, position } of this.yieldSubBlockList([
+                "Variables", "AuxVariables", "Postprocessors", "VectorPostprocessors",
+                "UserObjects", "Functions"
+            ])) {
+                if (name !== null) {
+                    if (!(mainBlock in refsDict)) {
+                        refsDict[mainBlock] = {};
+                    }
+                    refsDict[mainBlock][name] = { inst: position, refs: [] };
+                }
+            }
+            // TODO add material variables
+        }
 
         // step through document
         for (var row = 0; row < this.getDoc().getLineCount(); row++) {
@@ -1151,21 +1172,24 @@ export class MooseDoc {
             emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors, line);
 
             if (blockOpenTop.test(line)) {
-                await this.assessMainBlock(currLevel, syntaxErrors, row, line, outlineItems, globalParamDict);
+                await this.assessMainBlock(
+                    currLevel, syntaxErrors, row, line, outlineItems, globalParamDict, refsDict);
                 currLevel = 1;
                 indentLevel = 0;
             } else if (blockCloseTop.test(line)) {
-                await this.closeMainBlock(currLevel, syntaxErrors, row, line, outlineItems, globalParamDict);
+                await this.closeMainBlock(
+                    currLevel, syntaxErrors, row, line, outlineItems, globalParamDict, refsDict);
                 currLevel = 0;
                 indentLevel = 0;
             } else if (blockOpenOneLevel.test(line)) {
                 currLevel = await this.assessSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 indentLevel = currLevel - 1;
             } else if (blockCloseOneLevel.test(line)) {
-                currLevel = await this.closeSubBlock(currLevel, syntaxErrors, row, line, outlineItems, globalParamDict);
+                currLevel = await this.closeSubBlock(
+                    currLevel, syntaxErrors, row, line, outlineItems, globalParamDict, refsDict);
                 indentLevel = currLevel;
             } else if (/^\s*[_a-zA-Z0-9]+\s*=.*$/.test(line)) {
-                await this.assessParameter(line, outlineItems, syntaxErrors, row, currLevel);
+                await this.assessParameter(line, outlineItems, row, currLevel);
                 indentLevel = currLevel;
             } else {
                 indentLevel = currLevel;
@@ -1177,8 +1201,8 @@ export class MooseDoc {
             if (firstChar >= 0 && firstChar !== indentLevel * this.indentLength) {
                 syntaxErrors.push({
                     type: "format",
-                    start: [row, 0],
-                    end: [row, firstChar],
+                    start: {row: row, column: 0},
+                    end: {row: row, column: firstChar},
                     correction: {
                         replace: " ".repeat(indentLevel * this.indentLength),
                     },
@@ -1192,24 +1216,25 @@ export class MooseDoc {
         // check no blocks are left unclosed
         if (currLevel !== 0) {
             let insert = "[]\n";
-            for (let i = 1; i < currLevel; i++){
-                insert = " ".repeat(this.indentLength*i) + "[../]\n" + insert;
+            for (let i = 1; i < currLevel; i++) {
+                insert = " ".repeat(this.indentLength * i) + "[../]\n" + insert;
             }
             syntaxErrors.push({
                 type: "closure",
-                start: [row, 0],
-                end: [row, line.length],
+                start: {row: row, column: 0},
+                end: {row: row, column: line.length},
                 msg: 'final block(s) unclosed',
                 correction: {
                     // insertionAfter: "[../]\n".repeat(currLevel - 1) + "[]\n"
                     insertionAfter: insert
                 }
             });
-            await this.closeFinalBlockAndChildren(outlineItems, 1, row, "", syntaxErrors, globalParamDict);
+            await this.closeFinalBlockAndChildren(
+                outlineItems, 1, row, "", syntaxErrors, globalParamDict, refsDict);
         }
         emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors, line);
 
-        return { outline: outlineItems, errors: syntaxErrors };
+        return { outline: outlineItems, errors: syntaxErrors, refs: refsDict };
     }
 
     /** detect multiple blank lines */
@@ -1221,8 +1246,8 @@ export class MooseDoc {
             if (emptyLines.length > 1) {
                 syntaxErrors.push({
                     type: "format",
-                    start: [emptyLines[0], 0],
-                    end: [row - 1, line === null ? 0 : line.length],
+                    start: {row: emptyLines[0], column: 0},
+                    end: {row: row - 1, column: line === null ? 0 : line.length},
                     msg: "multiple blank lines",
                     correction: {
                         replace: ""
@@ -1235,27 +1260,28 @@ export class MooseDoc {
     }
 
     private async assessMainBlock(level: number, syntaxErrors: SyntaxError[], row: number, line: string,
-        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string }) {
+        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string }, refsDict: VariableRefs | null) {
 
         let blockName: string;
 
         // test we are not already in a top block
         if (level > 0) {
             let insert = "[]\n";
-            for (let i = 1; i < level; i++){
-                insert = " ".repeat(this.indentLength*i) + "[../]\n" + insert;
+            for (let i = 1; i < level; i++) {
+                insert = " ".repeat(this.indentLength * i) + "[../]\n" + insert;
             }
             syntaxErrors.push({
                 type: "closure",
-                start: [row, 0],
-                end: [row, line.length],
+                start: {row: row, column: 0},
+                end: {row: row, column: line.length},
                 msg: 'block opened before previous one closed',
                 correction: {
                     // insertionBefore: "[../]\n".repeat(level - 1) + "[]\n"
                     insertionBefore: insert
                 }
             });
-            await this.closeFinalBlockAndChildren(outlineItems, 1, row - 1, line, syntaxErrors, globalParamDict);
+            await this.closeFinalBlockAndChildren(
+                outlineItems, 1, row - 1, line, syntaxErrors, globalParamDict, refsDict);
             level = 0;
         }
 
@@ -1265,8 +1291,8 @@ export class MooseDoc {
         if (outlineItems.map(o => o.name).indexOf(blockName) !== -1) {
             syntaxErrors.push({
                 type: "duplication",
-                start: [row, 0],
-                end: [row, line.length],
+                start: {row: row, column: 0},
+                end: {row: row, column: line.length},
                 msg: 'duplicate block name'
             });
         }
@@ -1276,7 +1302,7 @@ export class MooseDoc {
             name: blockName,
             description: "",
             level: 1,
-            start: [row, line.search(/\[/)],
+            start: {row: row, column: line.search(/\[/)},
             end: null,
             children: [],
             parameters: [],
@@ -1287,39 +1313,42 @@ export class MooseDoc {
     }
 
     private async closeMainBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string,
-        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string }) {
+        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string },
+        refsDict: VariableRefs | null) {
 
         // check all sub-blocks have been closed
         if (currLevel > 1) {
             let insert = "";
-            for (let i = 1; i < currLevel; i++){
-                insert = " ".repeat(this.indentLength*i) + "[../]\n" + insert;
+            for (let i = 1; i < currLevel; i++) {
+                insert = " ".repeat(this.indentLength * i) + "[../]\n" + insert;
             }
             syntaxErrors.push({
                 type: "closure",
-                start: [row, 0],
-                end: [row, line.length],
+                start: {row: row, column: 0},
+                end: {row: row, column: line.length},
                 msg: 'closed parent block before closing children',
                 correction: {
                     // insertionBefore: "[../]\n".repeat(currLevel - 1)
                     insertionBefore: insert
                 }
             });
-            await this.closeFinalBlockAndChildren(outlineItems, 2, row - 1, line, syntaxErrors, globalParamDict);
+            await this.closeFinalBlockAndChildren(
+                outlineItems, 2, row - 1, line, syntaxErrors, globalParamDict, refsDict);
         }
         // check a main block has been opened
         else if (currLevel < 1) {
             syntaxErrors.push({
                 type: "closure",
-                start: [row, 0],
-                end: [row, line.length],
+                start: {row: row, column: 0},
+                end: {row: row, column: line.length},
                 msg: 'closed block before opening new one',
                 correction: {
                     // insertionBefore: "[${1:name}\n]" // TODO correct with snippets
                 }
             });
         }
-        await this.closeFinalBlockAndChildren(outlineItems, 1, row, line, syntaxErrors, globalParamDict);
+        await this.closeFinalBlockAndChildren(
+            outlineItems, 1, row, line, syntaxErrors, globalParamDict, refsDict);
     }
 
     private async assessSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string, outlineItems: OutlineBlockItem[]) {
@@ -1330,8 +1359,8 @@ export class MooseDoc {
         if (currLevel === 0) {
             syntaxErrors.push({
                 type: "closure",
-                start: [row, 0],
-                end: [row, line.length],
+                start: {row: row, column: 0},
+                end: {row: row, column: line.length},
                 msg: 'opening sub-block before main block open',
                 correction: {
                     // insertionBefore: "[${1:name}]\n" // TODO correct with snippets
@@ -1356,7 +1385,7 @@ export class MooseDoc {
             name: currBlockName,
             description: "",
             level: currLevel,
-            start: [row, line.search(/\[/)],
+            start: {row: row, column: line.search(/\[/)},
             end: null,
             children: [],
             parameters: [],
@@ -1366,31 +1395,33 @@ export class MooseDoc {
     }
 
     private async closeSubBlock(currLevel: number, syntaxErrors: SyntaxError[], row: number, line: string,
-        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string }) {
+        outlineItems: OutlineBlockItem[], globalParamDict: { [index: string]: string },
+        refsDict: VariableRefs | null) {
         if (currLevel === 0) {
             syntaxErrors.push({
                 type: "closure",
-                start: [row, 0],
-                end: [row, line.length],
+                start: {row: row, column: 0},
+                end: {row: row, column: line.length},
                 msg: 'closing sub-block before opening main block',
             });
         }
         else if (currLevel === 1) {
             syntaxErrors.push({
                 type: "closure",
-                start: [row, 0],
-                end: [row, line.length],
+                start: {row: row, column: 0},
+                end: {row: row, column: line.length},
                 msg: 'closing sub-block before opening one',
             });
         }
         else {
-            let levelsClosed = await this.closeFinalBlockAndChildren(outlineItems, currLevel, row, line, syntaxErrors, globalParamDict);
+            let levelsClosed = await this.closeFinalBlockAndChildren(
+                outlineItems, currLevel, row, line, syntaxErrors, globalParamDict, refsDict);
             currLevel = currLevel - levelsClosed;
         }
         return currLevel;
     }
 
-    private async assessParameter(line: string, outlineItems: OutlineBlockItem[], syntaxErrors: SyntaxError[], row: number, currLevel: number) {
+    private async assessParameter(line: string, outlineItems: OutlineBlockItem[], row: number, currLevel: number) {
 
         let nameRegex = /^\s*([_a-zA-Z0-9]+)\s*=.*/.exec(line);
         let paramName = nameRegex !== null ? nameRegex[1] : '';
@@ -1403,8 +1434,8 @@ export class MooseDoc {
             blockItem.parameters.push({
                 name: paramName,
                 description: "",
-                start: [row, line.search(/[^\s]/)],
-                end: [row, line.length], // TODO end before comments
+                start: { row: row, column: line.search(/[^\s]/)},
+                end: { row: row, column: line.length }, // TODO end before comments
                 value: paramValue
             });
         }
@@ -1414,7 +1445,8 @@ export class MooseDoc {
     /**
      * close a single block, updating its end row and active children
      */
-    private async closeSingleBlock(block: OutlineBlockItem, endPos: [number, number], parentPath: string[], globalParamDict: { [index: string]: string }, ) {
+    private async closeSingleBlock(block: OutlineBlockItem, endPos: Position, parentPath: string[],
+        globalParamDict: { [index: string]: string }, refsDict: VariableRefs | null) {
 
         let syntaxErrors: SyntaxError[] = [];
 
@@ -1430,7 +1462,10 @@ export class MooseDoc {
                 syntaxErrors.push({
                     type: "duplication",
                     start: child.start,
-                    end: [child.start[0], child.start[1] + ("[./" + child.name + "]").length],
+                    end: {
+                        row: child.start.row,
+                        column: child.start.column + ("[./" + child.name + "]").length
+                    },
                     msg: 'duplicate block name'
                 });
             } else {
@@ -1461,8 +1496,10 @@ export class MooseDoc {
             let error: SyntaxError = {
                 type: "duplication",
                 start: block.start,
-                end: [block.start[0],
-                block.start[1] + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
+                end: {
+                    row: block.start.row,
+                    column: block.start.column + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)
+                },
                 msg: 'active and inactive parameters are not allowed in the same block'
             };
             syntaxErrors.push(error);
@@ -1524,12 +1561,12 @@ export class MooseDoc {
         let configPath = parentPath.concat([block.name]);
         let blockMatch = await this.syntaxdb.matchSyntaxNode(configPath);
         let typeName: null | string = null;
-        let typeMatch: null | moosedb.nodeMatch = null;
+        let typeMatch: null | moosedb.NodeMatch = null;
         let node: moosedb.SyntaxNode;
         if (blockMatch !== null) {
             // find type of block (use only first instance)
             if ("type" in paramDict && paramDict["type"][0].value) {
-                typeName = paramDict["type"][0].value
+                typeName = paramDict["type"][0].value;
                 let typedPath = this.syntaxdb.getTypedPath(configPath, typeName, blockMatch.fuzzyOnLast);
                 typeMatch = await this.syntaxdb.matchSyntaxNode(typedPath);
             }
@@ -1538,17 +1575,19 @@ export class MooseDoc {
             let error: SyntaxError = {
                 type: "dbcheck",
                 start: block.start,
-                end: [block.start[0],
-                block.start[1] + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
+                end: {
+                    row: block.start.row,
+                    column: block.start.column + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)
+                },
                 msg: 'block path was not found in database: ' + configPath.join("/")
             };
             syntaxErrors.push(error);
         } else {
             // add details for block
             if (typeMatch) {
-                node = typeMatch.node
+                node = typeMatch.node;
             } else {
-                node = blockMatch.node
+                node = blockMatch.node;
             }
             block.description = node.description;
 
@@ -1594,14 +1633,37 @@ export class MooseDoc {
                     let error: SyntaxError = {
                         type: "dbcheck",
                         start: block.start,
-                        end: [block.start[0],
-                        block.start[1] + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)],
+                        end: {
+                            row: block.start.row,
+                            column: block.start.column + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)
+                        },
                         msg: 'required parameter(s) "' + missingParams.join(", ") + '" not present in block: ' + stringPath,
                         correction: {
                             insertionAfter: "\n" + indent + missingParams.join(" = \n" + indent) + " = "
                         }
                     };
                     syntaxErrors.push(error);
+                }
+            }
+
+            // update reference dict 
+            if (refsDict !== null) {
+                for (let pname in paramDict) {
+                    if (!(pname in nodeParamDict)) { continue; }
+                    let node = nodeParamDict[pname];
+                    let vblocks = this.getVariableBlocks(node);
+                    if (vblocks === null) { continue; }
+                    let instanceInBlock = null;
+                    for (let vblock of vblocks) {
+                        if (vblock in refsDict && pname in refsDict[vblock]) {
+                            instanceInBlock = vblock;
+                            break;
+                        }
+                    }
+                    if (instanceInBlock === null) { continue; }
+                    for (let param of paramDict[pname]) {
+                        refsDict[instanceInBlock][pname]["refs"].push(param.start);
+                    }                        
                 }
             }
 
@@ -1622,10 +1684,13 @@ export class MooseDoc {
      * @param length the length of the closure line
      * @param syntaxErrors the list of errors to add to
      * @param globalParamDict dictionary of global parameters {name: value}
+     * @param refsDict dictionary of references
+     
      * @returns number of levels closed
      */
     private async closeFinalBlockAndChildren(outline: OutlineBlockItem[],
-        blockLevel: number, row: number, line: string, syntaxErrors: SyntaxError[], globalParamDict: { [index: string]: string }) {
+        blockLevel: number, row: number, line: string, syntaxErrors: SyntaxError[],
+        globalParamDict: { [index: string]: string }, refsDict: VariableRefs | null) {
         let levelsClosed = 0;
         let configPath: string[] = [];
 
@@ -1649,7 +1714,9 @@ export class MooseDoc {
             // throw Error('block already closed');
         } else {
             let closePos = line.search(/\]/);
-            let errors = await this.closeSingleBlock(item, [row, closePos >= 0 ? closePos + 1 : 0], configPath, globalParamDict);
+            let errors = await this.closeSingleBlock(
+                item, { row: row, column: closePos >= 0 ? closePos + 1 : 0 },
+                configPath, globalParamDict, refsDict);
             syntaxErrors.push(...errors);
             levelsClosed++;
         }
@@ -1658,7 +1725,7 @@ export class MooseDoc {
             configPath.push(item.name);
             item = item.children[item.children.length - 1];
             if (item.end === null) {
-                let errors = await this.closeSingleBlock(item, [row, 0], configPath, globalParamDict);
+                let errors = await this.closeSingleBlock(item, { row: row, column: 0}, configPath, globalParamDict, refsDict);
                 syntaxErrors.push(...errors);
                 levelsClosed++;
             }

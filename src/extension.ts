@@ -5,13 +5,13 @@ import * as vscode from 'vscode';
 import * as ppath from 'path';
 
 import { MooseSyntaxDB } from './moose_syntax';
-import { Document } from './moose_doc';
+import { Document, Position } from './moose_doc';
 import { DefinitionProvider, HoverProvider, OnTypeFormattingEditProvider, DocumentFormattingEditProvider, CompletionItemProvider, DocumentSymbolProvider, CodeActionsProvider } from './features';
 
 export class VSDoc implements Document {
     private vsdoc: vscode.TextDocument;
     constructor(vsdoc: vscode.TextDocument) {
-        this.vsdoc = vsdoc
+        this.vsdoc = vsdoc;
     }
     getPath() {
         return this.vsdoc.uri.fsPath;
@@ -19,9 +19,9 @@ export class VSDoc implements Document {
     getLineCount() {
         return this.vsdoc.lineCount;
     }
-    getTextInRange(start: [number, number], end: [number, number]) {
-        let pos1 = new vscode.Position(start[0], start[1]);
-        let pos2 = new vscode.Position(end[0], end[1]);
+    getTextInRange(start: Position, end: Position) {
+        let pos1 = new vscode.Position(start.row, start.column);
+        let pos2 = new vscode.Position(end.row, end.column);
         return this.vsdoc.getText(new vscode.Range(pos1, pos2));
     }
     getTextForRow(row: number) {
@@ -44,7 +44,7 @@ function getPaths(wrkPath: string) {
         jsonPath = jsonPath.replace("${workspaceFolder}", wrkPath);
     }
     // TODO resolve relative paths?
-    return { yamlPath: yamlPath, jsonPath: jsonPath }
+    return { yamlPath: yamlPath, jsonPath: jsonPath };
 }
 
 // this method is called when your extension is activated

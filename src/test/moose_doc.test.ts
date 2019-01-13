@@ -33,26 +33,26 @@ class TestDoc implements moosedoc.Document {
     getLineCount() {
         return this.text.split('\n').length;
     }
-    getTextInRange(start: [number, number], end: [number, number]) {
+    getTextInRange(start: moosedoc.Position, end: moosedoc.Position) {
         let i: number;
         let out: string[] = [];
         let lines = this.text.split('\n');
 
-        if (start[0] > end[0]) {
+        if (start.row > end.row) {
             throw Error('the start is before the end');
         }
 
-        if (start[0] === end[0]) {
-            if (start[1] > end[1]) {
+        if (start.row === end.row) {
+            if (start.column > end.column) {
                 throw Error('the start is before the end');
             }
-            out.push(lines[start[0]].slice(start[1], end[1]));
+            out.push(lines[start.row].slice(start.column, end.column));
         } else {
-            out.push(lines[start[0]].slice(start[1]));
-            for (i = start[0] + 1; i < end[0] - 1; i++) {
+            out.push(lines[start.row].slice(start.column));
+            for (i = start.row + 1; i < end.row - 1; i++) {
                 out.push(lines[i]);
             }
-            out.push(lines[end[0]].slice(end[1]));
+            out.push(lines[end.row].slice(end.column));
         }
 
         return out.join("\n");
@@ -430,12 +430,12 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: [2, 1], end: [5, 9],
+                start: {row: 2, column: 1}, end: {row: 5, column: 9},
                 children: [{
                     name: "v1",
                     description: "",
                     level: 2,
-                    start: [3, 4], end: [4, 9],
+                    start: {row: 3, column: 4}, end: {row: 4, column: 9},
                     children: [],
                     inactive: [],
                     parameters: []
@@ -447,23 +447,23 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: [6, 0], end: [14, 0],
+                start: {row: 6, column: 0}, end: {row: 14, column: 0},
                 children: [{
                     name: "akernel",
                     description: "Allen Cahn kernel used when 'mu' is a function of variables",
                     level: 2,
-                    start: [7, 4], end: [10, 9],
+                    start: {row: 7, column: 4}, end: {row: 10, column: 9},
                     children: [],
                     inactive: [],
                     parameters: [
                         {
                             "description": "A string representing the Moose Object that will be built by this Action\n",
                             "name": "type", "value": "ACBarrierFunction",
-                            "start": [8, 1], "end": [8, 37]
+                            "start": {row: 8, column: 1}, "end": {row: 8, column: 37}
                         },
                         {
                             "description": "Whether or not this object should use the displaced mesh for computation. Note that in the case this is true but no displacements are provided in the Mesh block the undisplaced mesh will still be used.\n",
-                            "start": [9, 8], "end": [9, 46],
+                            "start": {row: 9, column: 8}, "end": {row: 9, column: 46},
                             "name": "use_displaced_mesh", "value": null,
                         }
                     ]
@@ -473,58 +473,59 @@ suite("MooseDoc Tests", function () {
             }],
             errors: [{
                 type: "closure",
-                start: [1, 0], end: [1, 2],
+                start: {row: 1, column: 0}, end: {row: 1, column: 2},
                 msg: "closed block before opening new one",
                 correction: { }
             },
             {
                 type: "format",
                 msg: "wrong indentation",
-                start: [2, 0], end: [2, 1],
+                start: {row: 2, column: 0}, end: {row: 2, column: 1},
                 correction: { replace: "" }
             },
             {
                 type: "dbcheck",
-                start: [3, 4], end: [3, 10],
+                start: {row: 3, column: 4}, end: {row: 3, column: 10},
                 msg: "required parameter(s) \"type\" not present in block: Kernels/v1",
                 correction: { insertionAfter: "\n        type = " }
             },
             {
                 type: "closure",
-                start: [6, 0], end: [6, 9],
+                start: {row: 6, column: 0}, end: {row: 6, column: 9},
                 msg: "block opened before previous one closed",
                 correction: { insertionBefore: "[]\n" }
             },
             {
                 type: "duplication",
-                start: [6, 0], end: [6, 9],
+                start: {row: 6, column: 0}, end: {row: 6, column: 9},
                 msg: "duplicate block name"
             },
             {
                 type: "format",
                 msg: "wrong indentation",
-                start: [8, 0], end: [8, 1],
+                start: {row: 8, column: 0}, end: {row: 8, column: 1},
                 correction: { replace: "        " }
             },
             {
                 type: "dbcheck",
-                start: [7, 4], end: [7, 15],
+                start: {row: 7, column: 4}, end: {row: 7, column: 15},
                 msg: "required parameter(s) \"gamma, v, variable\" not present in block: Kernels/akernel/ACBarrierFunction",
                 correction: { insertionAfter: "\n        gamma = \n        v = \n        variable = " }
             },
             {
                 type: "format",
                 msg: "multiple blank lines",
-                start: [11, 0], end: [13, 0],
+                start: {row: 11, column: 0}, end: {row: 13, column: 0},
                 correction: { replace: "" }
             },
             {
                 type: "closure",
-                start: [14, 0], end: [14, 8],
+                start: {row: 14, column: 0}, end: {row: 14, column: 8},
                 msg: "final block(s) unclosed",
                 correction: { insertionAfter: "[]\n" }
             }
-            ]
+            ],
+            "refs": null
         });
     });
 
@@ -549,27 +550,27 @@ suite("MooseDoc Tests", function () {
                 {
                     "name": "Kernels", "level": 1,
                     "description": "",
-                    "start": [1, 0], "end": [9, 2],
+                    "start": {row: 1, column: 0}, "end": {row: 9, column: 2},
                     "inactive": [],
                     "parameters": [],
                     "children": [
                         {
                             "children": [],
                             "description": "",
-                            "start": [2, 4], "end": [5, 9],
+                            "start": {row: 2, column: 4}, "end": {row: 5, column: 9},
                             "inactive": [],
                             "level": 2,
                             "name": "a",
                             "parameters": [
                                 {
                                     "description": "A string representing the Moose Object that will be built by this Action\n",
-                                    "start": [3, 8], "end": [3, 16],
+                                    "start": {row: 3, column: 8}, "end": {row: 3, column: 16},
                                     "name": "type",
                                     "value": "b"
                                 },
                                 {
                                     "description": "A string representing the Moose Object that will be built by this Action\n",
-                                    "start": [4, 8], "end": [4, 16],
+                                    "start": {row: 4, column: 8}, "end": {row: 4, column: 16},
                                     "name": "type",
                                     "value": "c"
                                 }
@@ -578,13 +579,13 @@ suite("MooseDoc Tests", function () {
                         {
                             "children": [],
                             "description": "",
-                            "start": [6, 4], "end": [8, 9],
+                            "start": {row: 6, column: 4}, "end": {row: 8, column: 9},
                             "inactive": [],
                             "level": 2,
                             "name": "a",
                             "parameters": [{
                                 "description": "A string representing the Moose Object that will be built by this Action\n",
-                                "start": [7, 8], "end": [7, 16],
+                                "start": {row: 7, column: 8}, "end": {row: 7, column: 16},
                                 "name": "type",
                                 "value": "a"
                             }],
@@ -595,7 +596,7 @@ suite("MooseDoc Tests", function () {
                 {
                     "name": "Kernels", "level": 1,
                     "description": "",
-                    "start": [10, 0], "end": [11, 2],
+                    "start": {row: 10, column: 0}, "end": {row: 11, column: 2},
                     "inactive": [],
                     "parameters": [],
                     "children": [],
@@ -604,20 +605,21 @@ suite("MooseDoc Tests", function () {
             "errors": [
                 {
                     "type": "duplication",
-                    "start": [4, 8], "end": [4, 16],
+                    "start": {row: 4, column: 8}, "end": {row: 4, column: 16},
                     "msg": "duplicate parameter name",
                 },
                 {
                     "type": "duplication",
-                    "start": [6, 4], "end": [6, 9],
+                    "start": {row: 6, column: 4}, "end": {row: 6, column: 9},
                     "msg": "duplicate block name",
                 },
                 {
                     "type": "duplication",
-                    "start": [10, 0], "end": [10, 9],
+                    "start": {row: 10, column: 0}, "end": {row: 10, column: 9},
                     "msg": "duplicate block name",
                 }
-            ]
+            ],
+            "refs": null
         });
     });
 
@@ -634,21 +636,22 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: [1, 0], end: [3, 2],
+                start: {row: 1, column: 0}, end: {row: 3, column: 2},
                 children: [],
                 inactive: [],
                 parameters: [{
                     "name": "a",
                     "description": "",
-                    "start": [2, 4], "end": [2, 9],
+                    "start": {row: 2, column: 4}, "end": {row: 2, column: 9},
                     "value": "1"
                 }],
             }],
             errors: [{
                 "type": "dbcheck",
                 "msg": "parameter name \"a\" was not found for this block in database: Kernels",
-                "start": [2, 4], "end": [2, 9],
-            }]
+                "start": {row: 2, column: 4}, "end": {row: 2, column: 9},
+            }],
+            "refs": null
         });
     });
 
@@ -666,12 +669,13 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: [3, 0], end: [4, 2],
+                start: {row: 3, column: 0}, end: {row: 4, column: 2},
                 children: [],
                 inactive: [],
                 parameters: [],
             }],
-            errors: []
+            errors: [],
+            "refs": null
         });
     });
 
@@ -694,16 +698,16 @@ suite("MooseDoc Tests", function () {
                 "name": "Kernels",
                 "description": "",
                 "level": 1,
-                "start": [1, 0], "end": [9, 2],
+                "start": {row: 1, column: 0}, "end": {row: 9, column: 2},
                 "children": [{
                     "description": "",
-                    "start": [3, 4], "end": [5, 9],
+                    "start": {row: 3, column: 4}, "end": {row: 5, column: 9},
                     "inactive": [],
                     "level": 2,
                     "name": "a",
                     "parameters": [{
                         "description": "A string representing the Moose Object that will be built by this Action\n",
-                        "start": [4, 8], "end": [4, 16],
+                        "start": {row: 4, column: 8}, "end": {row: 4, column: 16},
                         "name": "type",
                         "value": "x"
                     }],
@@ -711,13 +715,13 @@ suite("MooseDoc Tests", function () {
                 },
                 {
                     "description": "",
-                    "start": [6, 4], "end": [8, 9],
+                    "start": {row: 6, column: 4}, "end": {row: 8, column: 9},
                     "inactive": [],
                     "level": 2,
                     "name": "b",
                     "parameters": [{
                         "description": "A string representing the Moose Object that will be built by this Action\n",
-                        "start": [7, 8], "end": [7, 16],
+                        "start": {row: 7, column: 8}, "end": {row: 7, column: 16},
                         "name": "type",
                         "value": "y"
                     }],
@@ -726,15 +730,16 @@ suite("MooseDoc Tests", function () {
                 inactive: ["b"],
                 parameters: [{
                     "description": "If specified only the blocks named will be visited and made active",
-                    "start": [2, 4], "end": [2, 18],
+                    "start": {row: 2, column: 4}, "end": {row: 2, column: 18},
                     "name": "active", "value": "a c"
                 }],
             }],
             errors: [{
                 "type": "refcheck",
-                "start": [2, 4], "end": [2, 18],
+                "start": {row: 2, column: 4}, "end": {row: 2, column: 18},
                 "msg": "subblock specified in active parameter value not found: c"
-            }]
+            }],
+            refs: null
         });
     });
 });

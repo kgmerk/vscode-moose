@@ -2,10 +2,18 @@
 
 import * as vscode from 'vscode';
 
-import { MooseDoc, OutlineBlockItem, OutlineParamItem } from './moose_doc';
+import { MooseDoc, OutlineBlockItem, OutlineParamItem, Position } from './moose_doc';
 import { VSDoc } from './extension';
 import { MooseSyntaxDB } from './moose_syntax';
 
+/** create a vscode Position from a moose one */
+export function createVSPos(pos: Position) {
+    return new vscode.Position(pos.row, pos.column);
+}
+/** create a vscode Range from a moose positions */
+export function createVSRange(start: Position, end: Position) {
+    return new vscode.Range(createVSPos(start), createVSPos(end));
+}
 
 function selectSymbolKind(kind: string, level: number) {
     if (kind === "block") {
@@ -125,11 +133,9 @@ export class OnTypeFormattingEditProvider implements vscode.OnTypeFormattingEdit
         for (let error of errors) {
             if (error.type === "format" && error.correction) {
                 // only make single line format edits
-                if (error.start[0] === error.end[0] && error.start[0] === row && error.correction.replace !== undefined) {
+                if (error.start.row === error.end.row && error.start.row === row && error.correction.replace !== undefined) {
                     vsEdit = new vscode.TextEdit(
-                        new vscode.Range(
-                            new vscode.Position(...error.start),
-                            new vscode.Position(...error.end)),
+                        createVSRange(error.start, error.end),
                         error.correction.replace);
                     vsEdits.push(vsEdit);
                 }
@@ -160,9 +166,7 @@ export class DocumentFormattingEditProvider implements vscode.DocumentFormatting
             if (error.type === "format" && error.correction) {
                 if (error.correction.replace !== undefined) {
                     vsEdit = new vscode.TextEdit(
-                        new vscode.Range(
-                            new vscode.Position(...error.start),
-                            new vscode.Position(...error.end)),
+                        createVSRange(error.start, error.end),
                         error.correction.replace);
                     vsEdits.push(vsEdit);
                 }
@@ -222,8 +226,8 @@ export class DocumentSymbolProvider implements vscode.DocumentSymbolProvider {
         if (!item.end) {
             return null;
         }
-        let range = new vscode.Range(new vscode.Position(...item.start), new vscode.Position(...item.end));
-        let selectRange = new vscode.Range(new vscode.Position(...item.start), new vscode.Position(...item.start)); // TODO have correct selection range 
+        let range = createVSRange(item.start, item.end);
+        let selectRange = createVSRange(item.start, item.start); // TODO have correct selection range 
         let params = {
             name: item.name,
             detail: item.description,
@@ -331,9 +335,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
                 severity = vscode.DiagnosticSeverity.Error;
             }
             message = error.msg;
-            range = new vscode.Range(
-                new vscode.Position(...error.start),
-                new vscode.Position(...error.end));
+            range = createVSRange(error.start, error.end);
             diagnostic = new vscode.Diagnostic(range, message, severity);
             diagnostic.source = "moose";
             diagnostic.code = error.type;
@@ -348,10 +350,8 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         for (let child of block.children) {
             if (block.inactive.indexOf(child.name) >= 0 && child.end !== null) {
                 let severity = vscode.DiagnosticSeverity.Hint;
-                let message = "inactive block";   
-                let range = new vscode.Range(
-                    new vscode.Position(...child.start), 
-                    new vscode.Position(...child.end));
+                let message = "inactive block";  
+                let range = createVSRange(child.start, child.end);
                 let diagnostic = new vscode.Diagnostic(range, message, severity);
                 diagnostic.tags = [vscode.DiagnosticTag.Unnecessary];
                 diagnostic.source = "moose";
@@ -368,8 +368,8 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let { errors } = await mooseDoc.assessDocument();
         let errornum = 1;
         for (let error of errors) {
-            let errorStart = new vscode.Position(...error.start);
-            let errorEnd = new vscode.Position(...error.end);
+            let errorStart = createVSPos(error.start);
+            let errorEnd = createVSPos(error.end);
             // if ( range.start.isAfterOrEqual(errorStart) && range.end.isBeforeOrEqual(errorEnd) && error.correction) {
             if ( range.start.line >= errorStart.line && range.end.line <= errorEnd.line && error.correction) {
                 if (error.correction.replace !== undefined) {
