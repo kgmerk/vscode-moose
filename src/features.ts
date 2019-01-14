@@ -165,7 +165,7 @@ export class DocumentFormattingEditProvider implements vscode.DocumentFormatting
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document),
             vscode.workspace.getConfiguration('moose.tab').get('spaces', 4));
 
-        let { errors } = await mooseDoc.assessDocument();
+        let { errors } = await mooseDoc.assessDocument(false);
 
         for (let error of errors) {
             if (error.type === "format" && error.correction) {
@@ -319,7 +319,9 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
             return;
         }
         let diagnostics: vscode.Diagnostic[] = [];
-        let dtypes: string[] = vscode.workspace.getConfiguration('moose').get('diagnostics', []);
+        let etypes: string[] = vscode.workspace.getConfiguration('moose.diagnostics').get('error', []);
+        let wtypes: string[] = vscode.workspace.getConfiguration('moose.diagnostics').get('warning', []);
+        let dtypes = etypes.concat(wtypes);
         if (dtypes.length === 0) {
             this.diagnosticCollection.set(document.uri, diagnostics);
             return;
@@ -329,12 +331,16 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let message: string;
         let range: vscode.Range;
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
-        let { outline, errors } = await mooseDoc.assessDocument();
+        let incRefs = false;
+        if (dtypes.indexOf("refcheck") >= 0 || dtypes.indexOf("matcheck") >= 0) {
+            incRefs = true
+        }
+        let { outline, errors } = await mooseDoc.assessDocument(incRefs);
         for (let error of errors) {
             if (dtypes.indexOf(error.type) < 0) {
                 continue;
             }
-            if (error.type === "format") {
+            if (wtypes.indexOf(error.type) >= 0) {
                 severity = vscode.DiagnosticSeverity.Warning;
             } else {
                 severity = vscode.DiagnosticSeverity.Error;

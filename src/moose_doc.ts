@@ -67,9 +67,10 @@ export interface SyntaxError {
     // closure = block not closed, 
     // duplication = duplication of block or parameter names
     // refcheck = internal reference checks (e.g. block or variable not found)
+    // matcheck = internal material checks (e.g. definition or reference not found)
     // dbcheck =  checks against the syntax database (e.g. block or parameter not found)
     // format = formatting warnings
-    type: "closure" | "duplication" | "refcheck" | "dbcheck" | "format";
+    type: "closure" | "duplication" | "refcheck" | "matcheck" | "dbcheck" | "format";
     start: Position;
     end: Position;
     msg: string;
@@ -1178,10 +1179,10 @@ export class MooseDoc {
      * - **outline**: a heirarchical outline of the the documents blocks and subblocks
      * - **errors**: a list of syntactical errors
      * 
-     * @param gatherReferences if true also return a `refs` key containing variable reference data
+     * @param incReferences if true include assessment of internal references
      * 
      */
-    public async assessDocument(gatherReferences: boolean = false) {
+    public async assessDocument(incReferences: boolean = false) {
 
         let outlineItems: OutlineBlockItem[] = [];
         let syntaxErrors: SyntaxError[] = [];
@@ -1207,7 +1208,7 @@ export class MooseDoc {
             }
         }
         // gather variable definitions
-        if (gatherReferences) {
+        if (incReferences) {
             refsDict = {};
             for (let { mainBlock, name, position } of this.yieldSubBlockList([
                 "Variables", "AuxVariables", "Postprocessors", "VectorPostprocessors",
@@ -1725,22 +1726,42 @@ export class MooseDoc {
                     let vBlocks = this.getDefinitionBlocks(node);
                     for (let param of paramDict[pname]) {
                         if (!param.value) { continue; }
-                        if (vBlocks !== null) {
-                            let instanceInBlock = null;
-                            for (let vBlock of vBlocks) {
-                                if ([vBlock, param.value, param.value].join("/") in refsDict) {
-                                    // if (vBlock in refsDict && block.name in refsDict[vBlock] && param.value in refsDict[vBlock][block.name]) {
-                                    instanceInBlock = vBlock;
-                                    break;
+                        // split vector values (e.g. 'a b c')
+                        for (let pvalue of param.value.split(/\s+/).filter(Boolean)) {
+                            if (vBlocks !== null) {
+                                let instanceInBlock = null;
+                                for (let vBlock of vBlocks) {
+                                    if ([vBlock, pvalue, pvalue].join("/") in refsDict) {
+                                        instanceInBlock = vBlock;
+                                        break;
+                                    }
                                 }
-                            }
-                            if (instanceInBlock === null) { continue; }
-                            refsDict[[instanceInBlock, param.value, param.value].join("/")]["refs"].push(param.start);
-                        } else {
-                            let valNode = await this.getMaterialDefinition(node, param.value);
-                            if (valNode) {
-                                if ([valNode.defPath[0], valNode.defPath[1], param.value].join("/") in refsDict) {
-                                    refsDict[[valNode.defPath[0], valNode.defPath[1], param.value].join("/")]["refs"].push(param.start);
+                                if (instanceInBlock !== null) {
+                                    refsDict[[instanceInBlock, pvalue, pvalue].join("/")]["refs"].push(param.start);
+                                } else if (vBlocks.indexOf("Functions") < 0) {
+                                    // FunctionName variables can be a string of the actual function, e.g. func = 'x+y'
+                                    let error: SyntaxError = {
+                                        type: "refcheck",
+                                        msg: pvalue + " references a variable that was not found in the document",
+                                        start: param.start,
+                                        end: param.end
+                                    };
+                                    syntaxErrors.push(error);
+                                }
+                            } else {
+                                let valNode = await this.getMaterialDefinition(node, pvalue);
+                                if (valNode) {
+                                    if ([valNode.defPath[0], valNode.defPath[1], pvalue].join("/") in refsDict) {
+                                        refsDict[[valNode.defPath[0], valNode.defPath[1], pvalue].join("/")]["refs"].push(param.start);
+                                    } else {
+                                        let error: SyntaxError = {
+                                            type: "matcheck",
+                                            msg: pvalue + " references a material that was not found in the document",
+                                            start: param.start,
+                                            end: param.end
+                                        };
+                                        syntaxErrors.push(error);
+                                    }
                                 }
                             }
                         }

@@ -1,6 +1,6 @@
 {
   "name": "moose",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "displayName": "MOOSE for VSCode",
   "title": "MOOSE for VSCode",
   "description": "language support for MOOSE (Multiphysics Object Oriented Simulation Environment).",
@@ -56,12 +56,20 @@
           "description": "the number of spaces per indentation",
           "default": 4
         },
-        "moose.diagnostics": {
+        "moose.diagnostics.error": {
           "type": "array",
-          "description": "specify which syntax error types to diagnose",
-          "default": ["closure", "duplication", "refcheck", "dbcheck", "format"],
+          "description": "specify which syntax error types to diagnose as an error",
+          "default": ["closure", "duplication", "refcheck", "matcheck", "dbcheck"],
           "items": {
-            "enum": ["closure", "duplication", "refcheck", "dbcheck", "format"]
+            "enum": ["closure", "duplication", "refcheck", "matcheck", "dbcheck", "format"]
+          }
+        },
+        "moose.diagnostics.warning": {
+          "type": "array",
+          "description": "specify which syntax error types to diagnose as a warning",
+          "default": ["format"],
+          "items": {
+            "enum": ["closure", "duplication", "refcheck", "matcheck", "dbcheck", "format"]
           }
         }
       }

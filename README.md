@@ -52,7 +52,8 @@ Files are diagnosed for multiple types of syntax and formatting errors:
 
 - `closure`: if block(s) have not been closed,
 - `duplication`: duplication of block or parameter names,
-- `refcheck`: internal reference checks (e.g. block or variable not found)
+- `refcheck`: internal variable reference checks
+- `matcheck`: internal material reference checks
 - `dbcheck`: checks against the syntax database (e.g. block or parameter not found and required parameters missing)
 - `format`: formatting warnings, including bad indentation and multiple blank lines
 
@@ -81,13 +82,14 @@ Format as you type can also be set in the [general settings](https://code.visual
 
 Settings are configured in `Preferences -> Settings`:
 
-| Name                | Description                                   |
-| ------------------- | ----------------------------------------------|
-| `moose.syntax.yaml` | the path of the YAML file                     |
-| `moose.syntax.json` | the path of the JSON file                     |
-| `moose.tab.space`   | the number of spaces per indentation          |
-| `moose.diagnostics` | specify which syntax error types to diagnose  |
-| `moose.log.debug`   | log debug and warning messages to the console |
+| Name                        | Description                                              |
+| --------------------------- | ---------------------------------------------------------|
+| `moose.syntax.yaml`         | the path of the YAML file                                |
+| `moose.syntax.json`         | the path of the JSON file                                |
+| `moose.tab.space`           | the number of spaces per indentation                     |
+| `moose.diagnostics.error`   | specify which syntax error types are flagged as errors   |
+| `moose.diagnostics.warning` | specify which syntax error types are flagged as warnings |
+| `moose.log.debug`           | log debug and warning messages to the console            |
 
 ![](images/settings.png)
 
@@ -152,6 +154,11 @@ Fixed some bugs:
 ### 0.9.2
 
 - improved identification of variable/material definitions and references
+
+### 0.9.3
+
+- added diagnostics of internal variable/material references
+- split diagnostics user option to set which error types are flagged as errors or warnings
 
 ## Acknowledgements
 
