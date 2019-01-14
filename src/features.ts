@@ -448,7 +448,7 @@ export class ReferenceProvider implements vscode.ReferenceProvider {
             for (let key of keys) {
                 if (!(key in refs)) { return locations; }
                 locations.push(new vscode.Location(
-                    document.uri, createVSPos(refs[key].inst)));
+                    document.uri, createVSPos(refs[key].instPos)));
                 for (let refPos of refs[key].refs) {
                     locations.push(new vscode.Location(
                         document.uri, createVSPos(refPos)));

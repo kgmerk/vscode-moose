@@ -108,7 +108,7 @@ suite("MooseDoc Tests", function () {
         doc.text = "[Variables]\n[./abc]\n[../]\n[]";
         let cursor = { row: 1, column: 5 };
         return expect(mdoc.findCurrentNode(cursor)
-        ).to.eventually.be.an('object').with.property('defines').eql([['Variables', 'abc', 'abc']]);
+        ).to.eventually.be.an('object').with.property('defines').eql([['Variables', 'abc']]);
     });
 
     test("findCurrentNode; type", function () {
@@ -168,7 +168,7 @@ suite("MooseDoc Tests", function () {
             {
                 path: ['Kernels', 'akernel', 'variable', 'xy_z'],
                 range: [19, 23],
-                defines: null, referenceTo: ['Variables', 'xy_z', 'xy_z'],
+                defines: null, referenceTo: ['Variables', 'xy_z'],
                 node: {
                     name: "xy_z",
                     defPath: ['Variables', 'xy_z'],
@@ -178,7 +178,7 @@ suite("MooseDoc Tests", function () {
             });
     });
 
-    test("findCurrentNode; value which is reference to material", function () {
+    test("findCurrentNode; value which is reference to FunctionMaterialBase type material", function () {
         doc.text = `
 [Materials]
     [./mat2]
@@ -205,7 +205,39 @@ suite("MooseDoc Tests", function () {
                     defType: "DerivativeParsedMaterial"
                 },
                 path: ['Kernels', 'akernel', 'f_name', 'fmat'],
-                referenceTo: ['Materials', 'mat2', 'fmat'],
+                referenceTo: ['Materials', 'fmat'],
+                range: [17, 21], defines: null
+            });
+    });
+
+    test("findCurrentNode; value which is reference to GenericConstantMaterial type material", function () {
+        doc.text = `
+[Materials]
+    [./mat2]
+        type = GenericConstantMaterial
+        prop_names = 'amat bmat'
+    [../]
+[]
+[Kernels]
+    [./akernel]
+        type = AllenCahn
+        f_name = bmat
+    [../]
+[]
+        `;
+        let cursor = { row: 10, column: 21 };
+        return expect(mdoc.findCurrentNode(cursor)
+        ).to.eventually.be.an('object').which.eql(
+            {
+                node: {
+                    name: "bmat",
+                    description: "Referenced Material",
+                    defPosition: { "row": 4, "column": 27 },
+                    defPath: ['Materials', 'mat2'],
+                    defType: "GenericConstantMaterial"
+                },
+                path: ['Kernels', 'akernel', 'f_name', 'bmat'],
+                referenceTo: ['Materials', 'bmat'],
                 range: [17, 21], defines: null
             });
     });
@@ -231,12 +263,12 @@ suite("MooseDoc Tests", function () {
                 node: {
                     name: "F",
                     description: "Referenced Material",
-                    defPosition: { "row": 2, "column": 4 },
+                    defPosition: { "row": 2, "column": 6 },
                     defPath: ['Materials', 'mat2'],
                     defType: "DerivativeParsedMaterial"
                 },
                 path: ['Kernels', 'akernel', 'f_name', 'F'],
-                referenceTo: ['Materials', 'mat2', 'F'],
+                referenceTo: ['Materials', 'F'],
                 range: [17, 18], defines: null
             });
     });
@@ -847,8 +879,9 @@ suite("MooseDoc Tests", function () {
             }],
             errors: [],
             refs: {
-                "Variables/a/a": {
-                    "inst": { row: 2, column: 6 },
+                "Variables/a": {
+                    "instPos": { row: 2, column: 6 },
+                    "instSubBlock": "a",
                     "refs": [{ row: 8, column: 8 }]
                 }
             }
@@ -899,8 +932,9 @@ suite("MooseDoc Tests", function () {
             }],
             errors: [],
             refs: {
-                "Materials/a/b": {
-                    "inst": { row: 4, column: 17 },
+                "Materials/b": {
+                    "instPos": { row: 4, column: 17 },
+                    "instSubBlock": "a",
                     "refs": []
                 }
             }
@@ -948,32 +982,39 @@ suite("MooseDoc Tests", function () {
         //     console.log(value);
         // }).catch(reason => console.log(reason));
         return expect(mdoc.assessDocument(true)).to.eventually.be.an('object').with.property('refs').eql({
-            "Variables/a/a": {
-                "inst": { row: 2, column: 6 },
+            "Variables/a": {
+                "instPos": { row: 2, column: 6 },
+                "instSubBlock": "a",
                 "refs": [{ row: 32, column: 8 }]
             },
-            "AuxVariables/g/g": {
-                "inst": { row: 6, column: 6 },
+            "AuxVariables/g": {
+                "instPos": { row: 6, column: 6 },
+                "instSubBlock": "g",
                 "refs": []
             },
-            "Functions/f/f": {
-                "inst": { row: 10, column: 6 },
+            "Functions/f": {
+                "instPos": { row: 10, column: 6 },
+                "instSubBlock": "f",
                 "refs": []
             },
-            "Materials/c/b": {
-                "inst": { row: 16, column: 17 },
+            "Materials/b": {
+                "instPos": { row: 16, column: 17 },
+                "instSubBlock": "c",
                 "refs": [{ row: 33, column: 8 }]
             },
-            "Materials/d/F": {
-                "inst": { row: 19, column: 4 },
+            "Materials/F": {
+                "instPos": { row: 19, column: 6 },
+                "instSubBlock": "d",
                 "refs": []
             },
-            "Materials/e/x": {
-                "inst": { row: 25, column: 22 },
+            "Materials/x": {
+                "instPos": { row: 25, column: 22 },
+                "instSubBlock": "e",
                 "refs": []
             },
-            "Materials/e/y": {
-                "inst": { row: 25, column: 24 },
+            "Materials/y": {
+                "instPos": { row: 25, column: 24 },
+                "instSubBlock": "e",
                 "refs": []
             }
         });

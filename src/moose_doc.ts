@@ -83,8 +83,9 @@ export interface SyntaxError {
 /** a dictionary to hold variables and where they were instantiated and referenced in the doc */
 export interface VariableRefs {
     [id: string]: { // the key for the main block
-        inst: Position, // the row on which the variable is instantiated
-        refs: Position[] // rows at which the variable is referenced
+        instPos: Position, // the position on which the variable is instantiated
+        instSubBlock: string,
+        refs: Position[] // positions at which the variable is referenced
     };
 }
 
@@ -111,7 +112,7 @@ let blockTagContent = /^\s*\[([^\]]*)\]/;
 let blockType = /^\s*type\s*=\s*([^#\s]+)/;
 let typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/;
 let parameterCompletion = /^\s*[^\s#=\]]*$/;
-let otherParameter = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/;
+let valueCompletion = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/;
 let stdVector = /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/;
 // legacy regexp
 let blockOpenTop = /^\s*\[([^.\/][^\/]*)\]/;
@@ -119,6 +120,9 @@ let blockCloseTop = /^\s*\[\]/;
 let blockOpenOneLevel = /^\s*\[\.\/([^.\/]+)\]/;
 let blockCloseOneLevel = /^\s*\[\.\.\/\]/;
 
+let paramLine = /^\s*([^\s#=\]]+)\s*=.*$/; // /^\s*([_a-zA-Z0-9]+)\s*=.*$/;
+// if match, returns [line w/out comment, name, value, unquoted value | undefined]
+let paramValueLine = /^\s*([^\s#=\]]+)\s*=\s*('(\s*[^\s'#=\]]*[^'#=\]]*)'|[^\s#=\]]*)/; // /^\s*([_a-zA-Z0-9]+)\s*=\s*[\'\"]*([^#\'\"]+)/;
 
 /**
  * A class to manage a MOOSE input document
@@ -199,7 +203,7 @@ export class MooseDoc {
     }
 
     /** find the blocks which may contain the definition of a referencing parameter */
-    private getDefinitionBlocks(param: moosedb.ParamNode) {
+    private getVariableDefinitionBlocks(param: moosedb.ParamNode) {
 
         let varType2Blocks: { [id: string]: string[] } = {
             NonlinearVariableName: ['Variables'],
@@ -228,53 +232,68 @@ export class MooseDoc {
 
     //** find all material definitions  */
     private async getAllMaterialDefinitions() {
-        let defs = [];
-        for (let definition of this.yieldMaterialDefinitions()) {
-            if (definition.name === null) {
-                definition.name = await this.getMaterialDefaultName(definition.type);
-            }
-            if (definition.name === null) {
-                // TODO raise warning if can't find name of a material block
-            } else {
-                defs.push(definition);
-            }
-        }
-        return defs;
-    }
+        let allDefs = [];
 
-    private async getMaterialDefaultName(matType: string) {
-        // TODO as noted in yieldMaterialNameList this could be part of that, 
-        // however, except async generators are not directly available in Node < 10
-        let name: string | null = null;
-        let paramList = await this.syntaxdb.fetchParameterList(["Materials", matType]);
-        for (let mparam of paramList) {
-            if (["f_name", "function_name", "h_name"].indexOf(mparam.name) >= 0) {
-                if (name !== null) {
-                    // TODO raise warning if multiple parameters define the default name
+        for (let subBlock of this.yieldSubBlocks(["Materials"], true)) {
+            if (subBlock.name === null) { continue;}
+            let defs = await this.syntaxdb.getMaterialDefinitions(subBlock.properties);
+            if (defs === null) { continue; }
+            for (let defName of defs.names) {
+
+                let position: Position;
+                if (defs.property in subBlock.properties) {
+                    let prop = subBlock.properties[defs.property];
+                    position = {
+                        row: prop.row,
+                        column: prop.line.search(RegExp("[=\\s\\\'\\\"]" + defName + "([\\s\\\'\\\"]|$)")) + 1
+                    };
                 } else {
-                    name = mparam.default;
+                    position = subBlock.position;
                 }
+
+                allDefs.push({
+                    name: defName,
+                    block: subBlock.name,
+                    type: defs.type,
+                    position: position
+                });
             }
         }
-        return name;
+
+        return allDefs;
     }
 
-    /** find a material definition for a referencing parameter */
-    private async getMaterialDefinition(param: moosedb.ParamNode, value: string) {
+    /** find a material definition for a referencing parameter
+     * 
+     * @param matName the name of the material
+     * @param startRow the row at which to start searching for the Materials block
+     */
+    private async getMaterialDefinition(param: moosedb.ParamNode, matName: string, startRow: number = 0) {
         let node: ValueNode | null = null;
         let match = stdVector.exec(param.cpp_type);
         if (param.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
-            // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
-            // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
-            for (let { name, position, block, type } of this.yieldMaterialDefinitions()) {
-                if (name === null) {
-                    name = await this.getMaterialDefaultName(type);
-                }
-                if (name === value) {
+
+            for (let subBlock of this.yieldSubBlocks(["Materials"], true, null, startRow)) {
+                if (subBlock.name === null) { continue; }
+                let defs = await this.syntaxdb.getMaterialDefinitions(subBlock.properties);
+                if (defs === null) { continue; }
+                if (defs.names.indexOf(matName) >= 0) {
+
+                    let position: Position;
+                    if (defs.property in subBlock.properties) {
+                        let prop = subBlock.properties[defs.property];
+                        position = {
+                            row: prop.row,
+                            column: prop.line.search(RegExp("[=\\s\\\'\\\"]" + matName + "([\\s\\\'\\\"]|$)")) + 1
+                        };
+                    } else {
+                        position = subBlock.position;
+                    }
+
                     node = {
-                        name: name,
-                        defType: type,
-                        defPath: ["Materials", block],
+                        name: matName,
+                        defType: defs.type,
+                        defPath: ["Materials", subBlock.name],
                         description: "Referenced Material",
                         defPosition: position
                     };
@@ -302,13 +321,13 @@ export class MooseDoc {
             if (param.name === paramName) {
 
                 // search for reference definition in blocks that define variables
-                let blockNames = this.getDefinitionBlocks(param);
+                let blockNames = this.getVariableDefinitionBlocks(param);
                 if ((param.name === 'active' || param.name === "inactive") && valuePath.length === 1) {
                     blockNames = valuePath;
                 }
                 if (blockNames) {
                     for (let blockName of blockNames) {
-                        for (let { name, position } of this.yieldSubBlockList([blockName])) {
+                        for (let { name, position } of this.yieldSubBlocks([blockName])) {
                             if (name === value) {
                                 // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
                                 node = {
@@ -350,8 +369,8 @@ export class MooseDoc {
         let match: null | moosedb.NodeMatch = null;
         let node: moosedb.SyntaxNode | moosedb.ParamNode | ValueNode | null = null;
         let rmatch: RegExpExecArray | null;
-        let defines: [string, string, string][] | null = null;
-        let reference: [string, string, string] | null = null;
+        let defines: [string, string][] | null = null;
+        let reference: [string, string] | null = null;
 
         let line = this.getDoc().getTextForRow(pos.row);
         let wordMatch = MooseDoc.getWordAt(line, pos.column, wordChars);
@@ -381,22 +400,20 @@ export class MooseDoc {
             // check if the subblock is defining a variable or material
             if (configPath.length === 2 && ['Variables', 'AuxVariables', 'Functions',
                 'Postprocessors', 'UserObjects', 'VectorPostprocessors'].indexOf(configPath[0]) >= 0) {
-                defines = [[configPath[0], configPath[1], configPath[1]]];
+                defines = [[configPath[0], configPath[1]]];
             }
             else if (configPath.length === 2 && configPath[0] === "Materials") {
-                let defs: [string, string, string][] = [];
-                // TODO yield only single sublock
-                for (let mat of this.yieldMaterialDefinitions()) {
-                    if (mat.block === configPath[1]) {
-                        if (mat.name === null) {
-                            mat.name = await this.getMaterialDefaultName(mat.type);
-                        }
-                        if (mat.name !== null) { 
-                            defs.push(["Materials", mat.block, mat.name]);
-                        }
+                let blockDefs: [string, string][] = [];
+                
+                for (let subBlock of this.yieldSubBlocks(["Materials"], true)) { 
+                    if (subBlock.name !== configPath[1]) { continue; }
+                    let defs = await this.syntaxdb.getMaterialDefinitions(subBlock.properties);
+                    if (defs === null) { break; }
+                    for (let matName of defs.names) {
+                        blockDefs.push(["Materials", matName]);
                     }
                 }
-                if (defs.length > 0) { defines = defs;}
+                if (blockDefs.length > 0) { defines = blockDefs; }
             }
         } else if (/\s*type\s*=\s*/.test(line.slice(0, start - 1))) {
             // type parameter
@@ -422,7 +439,7 @@ export class MooseDoc {
                     node = param;
                 }
             }
-        } else if (!!(rmatch = /^\s*([^\s#=\]]+)\s*=.*/.exec(line))) {
+        } else if (!!(rmatch = paramLine.exec(line))) { // /^\s*([^\s#=\]]+)\s*=.*/
             // value of parameter
             let paramName = rmatch[1];
             let vnode = await this.findValueReference(word, paramName, configPath, explicitType);
@@ -430,7 +447,7 @@ export class MooseDoc {
                 node = vnode;
                 // configPath = vnode.defPath;
                 configPath.push(paramName, word);
-                reference = [vnode.defPath[0], vnode.defPath[1], word];
+                reference = [vnode.defPath[0], word];
             }
         }
 
@@ -470,7 +487,7 @@ export class MooseDoc {
             completions = await this.completeTypeParameter(line, pos.column, configPath, explicitType);
         } else if (this.isParameterCompletion(line)) {
             completions = await this.completeParameter(configPath, explicitType);
-        } else if (!!(match = otherParameter.exec(line))) {
+        } else if (!!(match = valueCompletion.exec(line))) {
             // special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
             // TODO factor out, see above
             let param: moosedb.ParamNode;
@@ -691,25 +708,26 @@ export class MooseDoc {
      * @param blockNames the names of the top blocks (e.g. Functions, PostProcessors)
      * @param gatherParameters if true, return parameters of the block and sub blocks
      * @param paramFilter if not null return only these parameters of the subblock
+     * @param startRow the row in the document to start searching from
      * @yields objects containing the mainBlock name, sub block name, opening row and dict of properties, 
      *         Note that, if the name is null, this is the properties for the main block
      */
-    private * yieldSubBlockList(blockNames: string[],
-        gatherParameters: Boolean = false, paramFilter: string[] | null = null) {
-        let row = 0;
+    private * yieldSubBlocks(blockNames: string[],
+        gatherParameters: Boolean = false, paramFilter: string[] | null = null, startRow: number = 0) {
+        let row = startRow;
         let level = 0;
         let regexMatch: RegExpExecArray | null;
         let mainBlockName: string | null = null;
         let subBlock: {
             mainBlock: string
             name: string | null,
-            properties: { [index: string]: string },
+            properties: { [index: string]: { row: number, line: string, value: string } },
             position: Position
         } = { mainBlock: '', name: '', properties: {}, position: { row: 0, column: 0 } };
         let mainBlock: {
             mainBlock: string
             name: string | null,
-            properties: { [index: string]: string },
+            properties: { [index: string]: { row: number, line: string, value: string } },
             position: Position
         } = { mainBlock: '', name: null, properties: {}, position: { row: 0, column: 0 } };
 
@@ -771,15 +789,29 @@ export class MooseDoc {
                 if (level === 0) {
                     yield subBlock;
                 }
-            } else if (level === 1 && gatherParameters && (regexMatch = otherParameter.exec(line))) {
+            } else if (level === 1 && gatherParameters && (regexMatch = paramValueLine.exec(line))) {
                 let paramName = regexMatch[1];
-                if (paramFilter === null || paramFilter.indexOf(paramName) >= 0) {
-                    subBlock.properties[paramName] = regexMatch[2];
+                let paramValue: string;
+                if (regexMatch[3] !== undefined) {
+                    paramValue = regexMatch[3]; // unquoted list of values 
+                } else {
+                    paramValue = regexMatch[2]; // single value
                 }
-            } else if (level === 0 && gatherParameters && (regexMatch = otherParameter.exec(line))) {
-                let paramName = regexMatch[1];
                 if (paramFilter === null || paramFilter.indexOf(paramName) >= 0) {
-                    mainBlock.properties[paramName] = regexMatch[2];
+                    // TODO raise warning if paramName already set
+                    subBlock.properties[paramName] = { row: row, line: line, value: paramValue };
+                }
+            } else if (level === 0 && gatherParameters && (regexMatch = paramValueLine.exec(line))) {
+                let paramName = regexMatch[1];
+                let paramValue: string;
+                if (regexMatch[3] !== undefined) {
+                    paramValue = regexMatch[3]; // unquoted list of values 
+                } else {
+                    paramValue = regexMatch[2]; // single value
+                }
+                if (paramFilter === null || paramFilter.indexOf(paramName) >= 0) {
+                    // TODO raise warning if paramName already set
+                    mainBlock.properties[paramName] = { row: row, line: line, value: paramValue };
                 }
             }
 
@@ -788,119 +820,7 @@ export class MooseDoc {
 
     }
 
-    /** yield names of materials in the Materials block (if present)
-     *  
-     */
-    private * yieldMaterialDefinitions() {
-        let row = 0;
-        let level = 0;
-        let subBlockName: string | null = null;
-        let subBlockType: string | null = null;
-        let matNames: { name: string | null, block: string, position: Position, type: string }[] = [];
-        let regExec: RegExpExecArray | null;
-
-        let nlines = this.getDoc().getLineCount();
-
-        // find start of Materials block
-        while (row < nlines) {
-            let line = this.getDoc().getTextForRow(row);
-            if (/^\s*\[Materials\]/.test(line)) {
-                break;
-            }
-            row++;
-        }
-        let subblockRow = row;
-
-        // parse contents of subBlock block
-        while (true) {
-
-            if (row >= nlines) {
-                break;
-            }
-            let line = this.getDoc().getTextForRow(row);
-            if (blockCloseTop.test(line)) {
-                break;
-            }
-
-            if (blockOpenOneLevel.test(line)) {
-                if (level === 0) {
-                    let blockOpen = blockOpenOneLevel.exec(line);
-                    if (blockOpen !== null) {
-                        subBlockName = blockOpen[1];
-                    }
-                    subblockRow = row;
-                }
-                level++;
-            } else if (blockCloseOneLevel.test(line)) {
-                level--;
-                //NB: we scan the whole block first, to find the type, before yielding names
-                if (level === 0 && matNames.length === 0 && subBlockName && subBlockType) {
-                    // we want to try to find a default name;
-                    // However, calling await in generators is only supported natively in Node v10+
-                    // https://stackoverflow.com/questions/36107171/how-do-i-use-await-inside-a-generator
-                    // so for now we defer this to this.getMaterialDefaultName
-                    yield {
-                        name: null,
-                        block: subBlockName,
-                        type: subBlockType,
-                        position: { row: subblockRow, column: line.search(/\[/) } as Position
-                    };
-                }
-                if (level === 0 && subBlockType !== null) {
-                    for (let matname of matNames) {
-                        matname.type = subBlockType;
-                        yield matname;
-                    }
-                }
-                if (level === 0) {
-                    subBlockName = null;
-                    subBlockType = null;
-                    matNames = [];
-                }
-            } else if (level === 1 && subBlockName !== null) {
-                // find type
-                if (regExec = blockType.exec(line)) {
-                    subBlockType = regExec[1];
-                } else if (regExec = /^\s*(f_name|h_name|function_name)\s*=\s*[\'\"]*([^#\s\'\"]+)/.exec(line)) {
-                    // f_name or function_name used for most materials, or h_name used for some materials
-                    // TODO is there an obvious way to work out which parameter defines the materials names?
-                    if (matNames.length > 0) {
-                        // TODO raise warning if the material block has multiple definitions
-                        // throw Error('multiple definitions of the material name found in same block: ' + subBlockName);
-                    }
-                    let f_name = regExec[2];
-                    matNames = [{
-                        name: f_name,
-                        block: subBlockName,
-                        type: "",
-                        position: { row: row, column: line.search(RegExp("[=\\s\\\'\\\"]" + f_name + "([\\s\\\'\\\"]|$)")) + 1 } as Position
-                    }];
-                } else if (regExec = /^\s*prop_names\s*=\s*[\'\"]*([^#\'\"]+)/.exec(line)) {
-                    // prop_names is used for GenericConstantMaterial
-                    if (matNames.length > 0) {
-                        // TODO raise warning if the material block has multiple definitions
-                        // throw Error('multiple definitions of the material name found in same block: ' + subBlockName);
-                    }
-                    let p_names = regExec[1].split(/\s+/).filter(Boolean); // filter removes zero-length strings
-                    // TODO check prop_names can't overflow on to new line 
-                    matNames = [];
-                    for (let p_name of p_names) {
-                        matNames.push({
-                            name: p_name,
-                            block: subBlockName,
-                            type: "",
-                            position: { row: row, column: line.search(RegExp("[=\\s\\\'\\\"]" + p_name + "([\\s\\\'\\\"]|$)")) + 1 } as Position
-                        });
-                    }
-                }
-            }
-
-            row++;
-        }
-
-    }
-
-    /** generic completion list builder for subblock names
+    /** generic completion list builder for sub-block names
      * 
      * @param blockNames 
      * @param propertyNames 
@@ -908,12 +828,12 @@ export class MooseDoc {
     private computeSubBlockNameCompletion(blockNames: string[], propertyNames: string[]) {
         let completions: Completion[] = [];
         for (let block of Array.from(blockNames)) {
-            for (let { name, properties } of this.yieldSubBlockList([block], true, propertyNames)) {
+            for (let { name, properties } of this.yieldSubBlocks([block], true, propertyNames)) {
                 if (name === null) { continue; }
-                let doc = [];
+                let doc: string[] = [];
                 for (let propertyName of Array.from(propertyNames)) {
                     if (propertyName in properties) {
-                        doc.push(properties[propertyName]);
+                        doc.push(properties[propertyName].value);
                     }
                 }
 
@@ -1032,21 +952,16 @@ export class MooseDoc {
         } else if (hasType('MaterialPropertyName')) {
             // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
             // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
-            for (let { name, block, type } of this.yieldMaterialDefinitions()) {
-                if (name === null) { 
-                    name = await this.getMaterialDefaultName(type);
-                }
-                if (name !== null) {
-                    completions.push({
-                        kind: "value",
-                        displayText: name,
-                        description: ["Materials", block, name].join("/") + " (" + type + ")",
-                        insertText: {
-                            type: "text",
-                            value: name
-                        }
-                    });
-                }
+            for (let def of await this.getAllMaterialDefinitions()) {
+                completions.push({
+                    kind: "value",
+                    displayText: def.name,
+                    description: ["Materials", def.block, def.name].join("/") + " (" + def.type + ")",
+                    insertText: {
+                        type: "text",
+                        value: def.name
+                    }
+                });
             }
         } else if (param.name === 'active' || param.name === "inactive") {
             completions = this.computeSubBlockNameCompletion(configPath, ['type']);
@@ -1103,7 +1018,7 @@ export class MooseDoc {
         } else {
             // special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
             // TODO factor out, see below
-            let otherArray = otherParameter.exec(line);
+            let otherArray = valueCompletion.exec(line);
             if (otherArray !== null) {
                 let paramName = otherArray[1];
                 let param: moosedb.ParamNode;
@@ -1202,33 +1117,41 @@ export class MooseDoc {
 
         // perform an initial pass to gather global parameters
         let globalParamDict: { [index: string]: string } = {}; // {name: value}
-        for (let { properties } of this.yieldSubBlockList(["GlobalParams"], true)) {
+        for (let { properties } of this.yieldSubBlocks(["GlobalParams"], true)) {
             for (let param in properties) {
-                globalParamDict[param] = properties[param];
+                globalParamDict[param] = properties[param].value;
             }
         }
         // gather variable definitions
         if (incReferences) {
             refsDict = {};
-            for (let { mainBlock, name, position } of this.yieldSubBlockList([
+            for (let { mainBlock, name, position } of this.yieldSubBlocks([
                 "Variables", "AuxVariables", "Postprocessors", "VectorPostprocessors",
                 "UserObjects", "Functions"
             ])) {
                 if (name !== null) {
-                    // if (!(mainBlock in refsDict)) {
-                    //     refsDict[mainBlock] = {};
-                    // }
-                    refsDict[[mainBlock, name, name].join("/")] = { inst: position, refs: [] };
+                    if ([mainBlock, name].join("/") in refsDict) {
+                        // error already handled when checking for subblock duplication
+                        continue;
+                    }
+                    refsDict[[mainBlock, name].join("/")] = { instPos: position, instSubBlock: name, refs: [] };
                 }
             }
             for (let { name, block, position } of await this.getAllMaterialDefinitions()) {
                 if (name !== null) {
-                    // if (!("Materials" in refsDict)) {
-                    //     refsDict["Materials"] = {};
-                    // }
-                    refsDict[["Materials", block, name].join("/")] = { inst: position, refs: [] };
+                    if (["Materials", name].join("/") in refsDict) {
+                        syntaxErrors.push({
+                            type: "duplication",
+                            start: position,
+                            end: { row: position.row, column: position.column + name.length },
+                            msg: 'duplicate material name: ' + name
+                        });
+                        continue;
+                    }
+                    refsDict[["Materials", name].join("/")] = { instPos: position, instSubBlock: block, refs: [] };
                 }
             }
+            // TODO add error if same variable or material name is defined multiple times
         }
 
         // step through document
@@ -1255,7 +1178,7 @@ export class MooseDoc {
                 currLevel = await this.closeSubBlock(
                     currLevel, syntaxErrors, row, line, outlineItems, globalParamDict, refsDict);
                 indentLevel = currLevel;
-            } else if (/^\s*[_a-zA-Z0-9]+\s*=.*$/.test(line)) {
+            } else if (paramValueLine.test(line)) {
                 await this.assessParameter(line, outlineItems, row, currLevel);
                 indentLevel = currLevel;
             } else {
@@ -1490,11 +1413,24 @@ export class MooseDoc {
 
     private async assessParameter(line: string, outlineItems: OutlineBlockItem[], row: number, currLevel: number) {
 
-        let nameRegex = /^\s*([_a-zA-Z0-9]+)\s*=.*/.exec(line);
-        let paramName = nameRegex !== null ? nameRegex[1] : '';
+        // let nameRegex = paramLine.exec(line);
+        // let paramName = nameRegex !== null ? nameRegex[1] : '';
 
-        let valueRegex = /^\s*[_a-zA-Z0-9]+\s*=\s*[\'\"]*([^#\'\"]+)/.exec(line);
-        let paramValue = valueRegex !== null ? valueRegex[1].trim() === "" ? null : valueRegex[1].trim() : null;  // TODO this won't capture values which go over multiple lines 
+        let regex = paramValueLine.exec(line);
+
+        if (regex === null) { return; }
+        
+        let paramName = regex[1];
+        let paramValue: string | null;
+        if (regex[3] !== undefined) {
+            paramValue = regex[3]; // unquoted list of values 
+        } else {
+            paramValue = regex[2]; // single value
+        }
+        if (paramValue.trim().length === 0) {
+            paramValue = null;
+        }
+        // TODO capture values which go over multiple lines
 
         let { child: blockItem } = MooseDoc.getFinalChild(outlineItems, currLevel);
         if (blockItem !== null) {
@@ -1723,7 +1659,7 @@ export class MooseDoc {
                 for (let pname in paramDict) {
                     if (!(pname in nodeParamDict)) { continue; }
                     let node = nodeParamDict[pname];
-                    let vBlocks = this.getDefinitionBlocks(node);
+                    let vBlocks = this.getVariableDefinitionBlocks(node);
                     for (let param of paramDict[pname]) {
                         if (!param.value) { continue; }
                         // split vector values (e.g. 'a b c')
@@ -1731,13 +1667,13 @@ export class MooseDoc {
                             if (vBlocks !== null) {
                                 let instanceInBlock = null;
                                 for (let vBlock of vBlocks) {
-                                    if ([vBlock, pvalue, pvalue].join("/") in refsDict) {
+                                    if ([vBlock, pvalue].join("/") in refsDict) {
                                         instanceInBlock = vBlock;
                                         break;
                                     }
                                 }
                                 if (instanceInBlock !== null) {
-                                    refsDict[[instanceInBlock, pvalue, pvalue].join("/")]["refs"].push(param.start);
+                                    refsDict[[instanceInBlock, pvalue].join("/")]["refs"].push(param.start);
                                 } else if (vBlocks.indexOf("Functions") < 0) {
                                     // FunctionName variables can be a string of the actual function, e.g. func = 'x+y'
                                     let error: SyntaxError = {
@@ -1749,10 +1685,10 @@ export class MooseDoc {
                                     syntaxErrors.push(error);
                                 }
                             } else {
-                                let valNode = await this.getMaterialDefinition(node, pvalue);
-                                if (valNode) {
-                                    if ([valNode.defPath[0], valNode.defPath[1], pvalue].join("/") in refsDict) {
-                                        refsDict[[valNode.defPath[0], valNode.defPath[1], pvalue].join("/")]["refs"].push(param.start);
+                                let match = stdVector.exec(node.cpp_type);
+                                if (node.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
+                                    if ("Materials/" + pvalue in refsDict) {
+                                        refsDict["Materials/" + pvalue]["refs"].push(param.start);
                                     } else {
                                         let error: SyntaxError = {
                                             type: "matcheck",

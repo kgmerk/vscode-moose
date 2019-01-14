@@ -175,7 +175,7 @@ export class MooseSyntaxDB {
             this.handleError(err);
         }
 
-        if (yamlData !== ""){
+        if (yamlData !== "") {
             let outYPath = this.yaml_path === null ? ppath.join(appDir, "syntax.yaml") : this.yaml_path;
             await writeFile(outYPath, yamlData, { encoding: "utf8" });
         }
@@ -204,9 +204,9 @@ export class MooseSyntaxDB {
             this.handleError(err);
         }
 
-        if (jsonData !== ""){
+        if (jsonData !== "") {
             let outJPath = this.json_path === null ? ppath.join(appDir, "syntax.json") : this.json_path;
-            await writeFile(outJPath, jsonData, { encoding: "utf8" });    
+            await writeFile(outJPath, jsonData, { encoding: "utf8" });
         }
     }
 
@@ -577,7 +577,7 @@ export class MooseSyntaxDB {
                         default: "",
                         cpp_type: "std::vector<std::string>",
                         description: "If specified blocks matching these identifiers will be skipped.",
-                    };       
+                    };
                     paramList.push(inactive_param);
                 }
             }
@@ -642,6 +642,61 @@ export class MooseSyntaxDB {
         }
 
         return matchList;
+    }
+
+    /** Find definitions specified by a material sub-block.
+     * 
+     * Properties are defined in the .C files via declareProperty<.*>\((.*)\)
+     * This information is not available from a static analysis, 
+     * so we can only guess definitions from standard types classes
+     * 
+     * @param paramsDict the parameters in the block {name: value}
+     */
+    public async getMaterialDefinitions(paramsDict: { [name: string]: {value: string} }) {
+
+        let defNames: {names: string[], property: string, type: string} | null = null;
+
+        let matType: string | null = null;
+        if ("type" in paramsDict) {
+            matType = paramsDict["type"].value;
+        } else {
+            this.handleLog("type parameter not given for material");
+            return defNames;
+        }
+
+        if (await this.matchSyntaxNode(["Materials", matType]) === null) {
+            this.handleLog("type parameter '"+matType+"' not found in Materials");
+            return defNames;
+        }
+
+        let potentialNames = [
+            "f_name", // used by FunctionMaterialBase
+            "prop_names", // used by GenericConstantMaterial and GenericFunctionMaterial
+            "tensor_name", // used by GenericConstantRankTwoTensor
+            "property", // used by PiecewiseLinearInterpolationMaterial
+            "function_name" // used by OrderParameterFunctionMaterial (in phase_field module)
+        ];
+
+        let paramList = await this.fetchParameterList(["Materials", matType]);
+        for (let mparam of paramList) {
+            for (let potName of potentialNames) {
+                if (mparam.name === potName) {
+                    let value: string;
+                    if (potName in paramsDict) {
+                        value = paramsDict[potName].value;
+                    } else {
+                        value = mparam.default
+                    }
+                    return {
+                        names: value.split(/\s+/).filter(Boolean), // filter removes zero-length strings
+                        property: potName, type: matType
+                    }; 
+                }
+            }         
+        }
+
+        return defNames;
+
     }
 
 }
