@@ -149,6 +149,10 @@ Fixed some bugs:
 
 - added reference provider functionality
 
+### 0.9.2
+
+- improved identification of variable/material definitions and references
+
 ## Acknowledgements
 
 Thanks to Daniel Schwen for supplying code for [MOOSE autocompletion in ATOM.io](https://github.com/dschwen/autocomplete-moose)
