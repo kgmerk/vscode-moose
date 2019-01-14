@@ -91,7 +91,7 @@ export interface VariableRefs {
 export interface ValueNode {
     name: string;
     description: string;
-    defPath: string[]; // path to subblock
+    defPath: [string, string]; // path to subblock
     // paramNode: moosedb.ParamNode;
     file?: string; // path to the definition (if undefined then in same document as value)
     defPosition: Position; // position of the definition
@@ -228,17 +228,9 @@ export class MooseDoc {
     //** find all material definitions  */
     private async getAllMaterialDefinitions() {
         let defs = [];
-        for (let definition of this.yieldMaterialNameList()) {
+        for (let definition of this.yieldMaterialDefinitions()) {
             if (definition.name === null) {
-                // we want to try to find a default name
-                // TODO as noted in yieldMaterialNameList this could be part of that, except async generators are not available in Node < 10
-                let paramList = await this.syntaxdb.fetchParameterList(["Materials", definition.type]);
-                for (let mparam of paramList) {
-                    if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0) {
-                        definition.name = mparam.default;
-                        break;
-                    }
-                }
+                definition.name = await this.getMaterialDefaultName(definition.type);
             }
             if (definition.name === null) {
                 // TODO raise warning if can't find name of a material block
@@ -249,6 +241,23 @@ export class MooseDoc {
         return defs;
     }
 
+    private async getMaterialDefaultName(matType: string) {
+        // TODO as noted in yieldMaterialNameList this could be part of that, 
+        // however, except async generators are not directly available in Node < 10
+        let name: string | null = null;
+        let paramList = await this.syntaxdb.fetchParameterList(["Materials", matType]);
+        for (let mparam of paramList) {
+            if (["f_name", "function_name", "h_name"].indexOf(mparam.name) >= 0) {
+                if (name !== null) {
+                    // TODO raise warning if multiple parameters define the default name
+                } else {
+                    name = mparam.default;
+                }
+            }
+        }
+        return name;
+    }
+
     /** find a material definition for a referencing parameter */
     private async getMaterialDefinition(param: moosedb.ParamNode, value: string) {
         let node: ValueNode | null = null;
@@ -256,7 +265,10 @@ export class MooseDoc {
         if (param.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
             // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
             // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
-            for (let { name, position, block, type } of this.yieldMaterialNameList()) {
+            for (let { name, position, block, type } of this.yieldMaterialDefinitions()) {
+                if (name === null) {
+                    name = await this.getMaterialDefaultName(type);
+                }
                 if (name === value) {
                     node = {
                         name: name,
@@ -266,22 +278,6 @@ export class MooseDoc {
                         defPosition: position
                     };
                     return node;
-                } else if (name === null) {
-                    // TODO as noted in yieldMaterialNameList this could be part of that, except async generators are not available in Node < 10
-                    // we want to try to find a default name
-                    let paramList = await this.syntaxdb.fetchParameterList(["Materials", type]);
-                    for (let mparam of paramList) {
-                        if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default === value) {
-                            node = {
-                                name: mparam.default,
-                                defType: type,
-                                defPath: ["Materials", block],
-                                description: "Referenced Material",
-                                defPosition: position
-                            };
-                            return node;
-                        }
-                    }
                 }
             }
         }
@@ -353,6 +349,8 @@ export class MooseDoc {
         let match: null | moosedb.NodeMatch = null;
         let node: moosedb.SyntaxNode | moosedb.ParamNode | ValueNode | null = null;
         let rmatch: RegExpExecArray | null;
+        let defines: [string, string, string][] | null = null;
+        let reference: [string, string, string] | null = null;
 
         let line = this.getDoc().getTextForRow(pos.row);
         let wordMatch = MooseDoc.getWordAt(line, pos.column, regex);
@@ -379,6 +377,26 @@ export class MooseDoc {
                 return null;
             }
             node = match.node;
+            // check if the subblock is defining a variable or material
+            if (configPath.length === 2 && ['Variables', 'AuxVariables', 'Functions',
+                'Postprocessors', 'UserObjects', 'VectorPostprocessors'].indexOf(configPath[0]) >= 0) {
+                defines = [[configPath[0], configPath[1], configPath[1]]];
+            }
+            else if (configPath.length === 2 && configPath[0] === "Materials") {
+                let defs: [string, string, string][] = [];
+                // TODO yield only single sublock
+                for (let mat of this.yieldMaterialDefinitions()) {
+                    if (mat.block === configPath[1]) {
+                        if (mat.name === null) {
+                            mat.name = await this.getMaterialDefaultName(mat.type);
+                        }
+                        if (mat.name !== null) { 
+                            defs.push(["Materials", mat.block, mat.name]);
+                        }
+                    }
+                }
+                if (defs.length > 0) { defines = defs;}
+            }
         } else if (/\s*type\s*=\s*/.test(line.slice(0, start - 1))) {
             // type parameter
             match = await this.syntaxdb.matchSyntaxNode(configPath);
@@ -408,8 +426,10 @@ export class MooseDoc {
             let paramName = rmatch[1];
             let vnode = await this.findValueReference(word, paramName, configPath, explicitType);
             if (vnode) {
-                configPath = vnode.defPath;
                 node = vnode;
+                // configPath = vnode.defPath;
+                configPath.push(paramName, word);
+                reference = [vnode.defPath[0], vnode.defPath[1], word];
             }
         }
 
@@ -420,7 +440,9 @@ export class MooseDoc {
         return {
             node: node,
             path: configPath,
-            range: [start, end]
+            range: [start, end],
+            defines: defines,
+            referenceTo: reference
         };
     }
 
@@ -768,7 +790,7 @@ export class MooseDoc {
     /** yield names of materials in the Materials block (if present)
      *  
      */
-    private * yieldMaterialNameList() {
+    private * yieldMaterialDefinitions() {
         let row = 0;
         let level = 0;
         let subBlockName: string | null = null;
@@ -812,16 +834,15 @@ export class MooseDoc {
                 level--;
                 //NB: we scan the whole block first, to find the type, before yielding names
                 if (level === 0 && matNames.length === 0 && subBlockName && subBlockType) {
-                    // we want to try to find a default f_name or function_name;
-                    // let match = this.syntaxdb.fetchParameterList(["Materials", subBlockType])
+                    // we want to try to find a default name;
                     // However, calling await in generators is only supported natively in Node v10+
                     // https://stackoverflow.com/questions/36107171/how-do-i-use-await-inside-a-generator
-                    // so for now we defer this to the calling function
+                    // so for now we defer this to this.getMaterialDefaultName
                     yield {
                         name: null,
                         block: subBlockName,
                         type: subBlockType,
-                        position: { row: subblockRow, column: 0 } as Position
+                        position: { row: subblockRow, column: line.search(/\[/) } as Position
                     };
                 }
                 if (level === 0 && subBlockType !== null) {
@@ -840,11 +861,12 @@ export class MooseDoc {
                 if (regExec = blockType.exec(line)) {
                     subBlockType = regExec[1];
                 } else if (regExec = /^\s*(f_name|h_name|function_name)\s*=\s*[\'\"]*([^#\s\'\"]+)/.exec(line)) {
+                    // f_name or function_name used for most materials, or h_name used for some materials
+                    // TODO is there an obvious way to work out which parameter defines the materials names?
                     if (matNames.length > 0) {
                         // TODO raise warning if the material block has multiple definitions
                         // throw Error('multiple definitions of the material name found in same block: ' + subBlockName);
                     }
-                    // find f_name or function_name (used for most materials)
                     let f_name = regExec[2];
                     matNames = [{
                         name: f_name,
@@ -853,11 +875,11 @@ export class MooseDoc {
                         position: { row: row, column: line.search(RegExp("[=\\s\\\'\\\"]" + f_name + "([\\s\\\'\\\"]|$)")) + 1 } as Position
                     }];
                 } else if (regExec = /^\s*prop_names\s*=\s*[\'\"]*([^#\'\"]+)/.exec(line)) {
+                    // prop_names is used for GenericConstantMaterial
                     if (matNames.length > 0) {
                         // TODO raise warning if the material block has multiple definitions
                         // throw Error('multiple definitions of the material name found in same block: ' + subBlockName);
                     }
-                    // find prop_names (used for constants)
                     let p_names = regExec[1].split(/\s+/).filter(Boolean); // filter removes zero-length strings
                     // TODO check prop_names can't overflow on to new line 
                     matNames = [];
@@ -870,8 +892,6 @@ export class MooseDoc {
                         });
                     }
                 }
-
-                // TODO is there an obvious way to work out which parameter defines the materials names?
             }
 
             row++;
@@ -1011,29 +1031,15 @@ export class MooseDoc {
         } else if (hasType('MaterialPropertyName')) {
             // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
             // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
-            for (let { name, block, type } of this.yieldMaterialNameList()) {
-                if (name === null) {
-                    // we want to try to find a default f_name
-                    let paramList = await this.syntaxdb.fetchParameterList(["Materials", type]);
-                    for (let mparam of paramList) {
-                        if (["f_name", "h_name", "function_name"].indexOf(mparam.name) >= 0 && mparam.default) {
-                            completions.push({
-                                kind: "value",
-                                displayText: mparam.default,
-                                description: ["Materials", block, type, mparam.default].join("/"),
-                                insertText: {
-                                    type: "text",
-                                    value: mparam.default
-                                }
-                            });
-                            break;
-                        }
-                    }
-                } else {
+            for (let { name, block, type } of this.yieldMaterialDefinitions()) {
+                if (name === null) { 
+                    name = await this.getMaterialDefaultName(type);
+                }
+                if (name !== null) {
                     completions.push({
                         kind: "value",
                         displayText: name,
-                        description: "Materials/" + block + "/" + type,
+                        description: ["Materials", block, name].join("/") + " (" + type + ")",
                         insertText: {
                             type: "text",
                             value: name

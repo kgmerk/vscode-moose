@@ -92,7 +92,6 @@ suite("MooseDoc Tests", function () {
         //     if (value !== null) {
         //         console.log(value.name);
         //     }
-
         // });
         return expect(mdoc.findCurrentNode(cursor)
         ).to.eventually.be.an('object').with.property('path').eql(['Kernels']);
@@ -103,6 +102,13 @@ suite("MooseDoc Tests", function () {
         let cursor = { row: 2, column: 5 };
         return expect(mdoc.findCurrentNode(cursor)
         ).to.eventually.be.an('object').with.property('path').eql(['BCs', 'Periodic', 'c_bcs']);
+    });
+
+    test("findCurrentNode; sub-block defining variable", function () {
+        doc.text = "[Variables]\n[./abc]\n[../]\n[]";
+        let cursor = { row: 1, column: 5 };
+        return expect(mdoc.findCurrentNode(cursor)
+        ).to.eventually.be.an('object').with.property('defines').eql([['Variables', 'abc', 'abc']]);
     });
 
     test("findCurrentNode; type", function () {
@@ -157,16 +163,19 @@ suite("MooseDoc Tests", function () {
 []
         `;
         let cursor = { row: 8, column: 22 };
-        // mdoc.findCurrentNode(cursor).then(value => {
-        //     if (value !== null) {
-        //         console.log(value.name);
-        //     } else {
-        //         console.log("node not found");
-        //     }
-        // });
         return expect(mdoc.findCurrentNode(cursor)
-        ).to.eventually.be.an('object').with.property('path').eql(
-            ['Variables', 'xy_z']);
+        ).to.eventually.be.an('object').eql(
+            {
+                path: ['Kernels', 'akernel', 'variable', 'xy_z'],
+                range: [19, 23],
+                defines: null, referenceTo: ['Variables', 'xy_z', 'xy_z'],
+                node: {
+                    name: "xy_z",
+                    defPath: ['Variables', 'xy_z'],
+                    defPosition: { row: 2, column: 6 },
+                    description: "Referenced Variable"
+                }
+            });
     });
 
     test("findCurrentNode; value which is reference to material", function () {
@@ -185,13 +194,6 @@ suite("MooseDoc Tests", function () {
 []
         `;
         let cursor = { row: 10, column: 21 };
-        // mdoc.findCurrentNode(cursor).then(value => {
-        //     if (value !== null) {
-        //         console.log(value.name);
-        //     } else {
-        //         console.log("node not found");
-        //     }
-        // });
         return expect(mdoc.findCurrentNode(cursor)
         ).to.eventually.be.an('object').which.eql(
             {
@@ -202,8 +204,40 @@ suite("MooseDoc Tests", function () {
                     defPath: ['Materials', 'mat2'],
                     defType: "DerivativeParsedMaterial"
                 },
-                path: ['Materials', 'mat2'],
-                range: [17, 21]
+                path: ['Kernels', 'akernel', 'f_name', 'fmat'],
+                referenceTo: ['Materials', 'mat2', 'fmat'],
+                range: [17, 21], defines: null
+            });
+    });
+
+    test("findCurrentNode; value which is reference to material with default name", function () {
+        doc.text = `
+[Materials]
+    [./mat2]
+        type = DerivativeParsedMaterial
+    [../]
+[]
+[Kernels]
+    [./akernel]
+        type = AllenCahn
+        f_name = F
+    [../]
+[]
+        `;
+        let cursor = { row: 9, column: 18 };
+        return expect(mdoc.findCurrentNode(cursor)
+        ).to.eventually.be.an('object').which.eql(
+            {
+                node: {
+                    name: "F",
+                    description: "Referenced Material",
+                    defPosition: { "row": 2, "column": 4 },
+                    defPath: ['Materials', 'mat2'],
+                    defType: "DerivativeParsedMaterial"
+                },
+                path: ['Kernels', 'akernel', 'f_name', 'F'],
+                referenceTo: ['Materials', 'mat2', 'F'],
+                range: [17, 18], defines: null
             });
     });
 
@@ -313,7 +347,7 @@ suite("MooseDoc Tests", function () {
         ]);
     });
 
-    test("Completion; parameter value whose value is from Variables", function () {
+    test("Completion; parameter value that references a Variable", function () {
         doc.text = `
 [Variables]
     [./abc]
@@ -345,7 +379,7 @@ suite("MooseDoc Tests", function () {
         ]);
     });
 
-    test("Completion; parameter value whose value is from Materials", function () {
+    test("Completion; parameter value that references a Material", function () {
         doc.text = `
 [Materials]
     [./mat1] # a material with a defined name
@@ -375,7 +409,7 @@ suite("MooseDoc Tests", function () {
         return expect(mdoc.findCompletions(cursor)
         ).to.eventually.eql([
             {
-                "description": "Materials/mat1/DerivativeParsedMaterial",
+                "description": "Materials/mat1/dpm (DerivativeParsedMaterial)",
                 "displayText": "dpm",
                 "insertText": {
                     "type": "text",
@@ -385,7 +419,7 @@ suite("MooseDoc Tests", function () {
                 "replacementPrefix": ""
             },
             {
-                "description": "Materials/g_eta/BarrierFunctionMaterial/g",
+                "description": "Materials/g_eta/g (BarrierFunctionMaterial)",
                 "displayText": "g",
                 "insertText": {
                     "type": "text",
@@ -395,7 +429,7 @@ suite("MooseDoc Tests", function () {
                 "replacementPrefix": ""
             },
             {
-                "description": "Materials/constants/GenericConstantMaterial",
+                "description": "Materials/constants/M (GenericConstantMaterial)",
                 "displayText": "M",
                 "insertText": {
                     "type": "text",
@@ -405,7 +439,7 @@ suite("MooseDoc Tests", function () {
                 "replacementPrefix": ""
             },
             {
-                "description": "Materials/constants/GenericConstantMaterial",
+                "description": "Materials/constants/L (GenericConstantMaterial)",
                 "displayText": "L",
                 "insertText": {
                     "type": "text",
@@ -931,7 +965,7 @@ suite("MooseDoc Tests", function () {
                 "refs": [{ row: 33, column: 8 }]
             },
             "Materials/d/F": {
-                "inst": { row: 19, column: 0 },
+                "inst": { row: 19, column: 4 },
                 "refs": []
             },
             "Materials/e/x": {

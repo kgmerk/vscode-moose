@@ -92,14 +92,20 @@ export class HoverProvider implements vscode.HoverProvider {
         let pos = { row: line, column: character };
         let match = await mooseDoc.findCurrentNode(pos);
         if (match !== null) {
-            let { node, path, range } = match;
+            let { node, path, range, defines, referenceTo } = match;
             let mkdown = new vscode.MarkdownString();
             let descript = "**" + path.join("/") + "**\n\n" + node.description;
+            if (defines !== null) {
+                descript += "\n\nDefines: \n" + defines.reduce((total, def) => total + "\n- " + def.join("/"), "");
+            }
+            if (referenceTo !== null) {
+                descript += "\n\nReferences: " + referenceTo.join("/");
+            }
             if ("defType" in node && node.defType) {
-                descript += "\n\nType: " + node.defType + "\n";
+                descript += "\n\nType: " + node.defType;
             }
             if ("cpp_type" in node && node.cpp_type) {
-                descript += "\n\nC++ type: " + node.cpp_type + "\n";
+                descript += "\n\nC++ type: " + node.cpp_type;
             }
             if ("options" in node && node.options) {
                 descript += "\n\nOptions: " + node.options.split(" ").join(", ");
@@ -420,22 +426,27 @@ export class ReferenceProvider implements vscode.ReferenceProvider {
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let pos = { row: position.line, column: position.character };
         let match = await mooseDoc.findCurrentNode(pos);
-        if (match !== null && match.path.length === 2) {
+        if (match !== null && (match.defines || match.referenceTo)) {
             let { refs } = await mooseDoc.assessDocument(true);
             if (refs === null) { return locations; }
-            let key: string
-            if ("subblocks" in match.node) {
-                key = [match.path[0], match.path[1], match.path[1]].join("/");
-            } else {
-                key = [match.path[0], match.path[1], match.node.name].join("/");
-            } // TODO handle materials definitions
-            
-            if (!(key in refs)) { return locations; }
-            locations.push(new vscode.Location(
-                document.uri, createVSPos(refs[key].inst)));
-            for (let refPos of refs[key].refs) {
+            let keys: string[] = [];
+            if (match.defines) {
+                for (let def of match.defines) {
+                    keys.push(def.join("/"));
+                }
+            }
+            if (match.referenceTo) {
+                keys.push(match.referenceTo.join("/"));
+            }
+
+            for (let key of keys) {
+                if (!(key in refs)) { return locations; }
                 locations.push(new vscode.Location(
-                    document.uri, createVSPos(refPos)));                
+                    document.uri, createVSPos(refs[key].inst)));
+                for (let refPos of refs[key].refs) {
+                    locations.push(new vscode.Location(
+                        document.uri, createVSPos(refPos)));
+                }
             }
         }
         return locations;
