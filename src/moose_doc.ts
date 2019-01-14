@@ -106,23 +106,26 @@ function __guard__(value: RegExpMatchArray | null,
 }
 
 // regexes
-let emptyLine = /^\s*$/;
-let insideBlockTag = /^\s*\[([^\]#\s]*)$/;
-let blockTagContent = /^\s*\[([^\]]*)\]/;
-let blockType = /^\s*type\s*=\s*([^#\s]+)/;
-let typeParameter = /^\s*type\s*=\s*[^\s#=\]]*$/;
-let parameterCompletion = /^\s*[^\s#=\]]*$/;
-let valueCompletion = /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/;
-let stdVector = /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/;
-// legacy regexp
-let blockOpenTop = /^\s*\[([^.\/][^\/]*)\]/;
-let blockCloseTop = /^\s*\[\]/;
-let blockOpenOneLevel = /^\s*\[\.\/([^.\/]+)\]/;
-let blockCloseOneLevel = /^\s*\[\.\.\/\]/;
+let rgx = {
+    emptyLine: /^\s*$/,
+    insideBlockTag: /^\s*\[([^\]#\s]*)$/,
+    blockTagContent: /^\s*\[([^\]]*)\]/,
+    blockType: /^\s*type\s*=\s*([^#\s]+)/,
+    typeParameter: /^\s*type\s*=\s*[^\s#=\]]*$/,
+    parameterCompletion: /^\s*[^\s#=\]]*$/,
+    valueCompletion: /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/,
+    stdVector: /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/,
 
-let paramLine = /^\s*([^\s#=\]]+)\s*=.*$/; // /^\s*([_a-zA-Z0-9]+)\s*=.*$/;
-// if match, returns [line w/out comment, name, value, unquoted value | undefined]
-let paramValueLine = /^\s*([^\s#=\]]+)\s*=\s*('(\s*[^\s'#=\]]*[^'#=\]]*)'|[^\s#=\]]*)/; // /^\s*([_a-zA-Z0-9]+)\s*=\s*[\'\"]*([^#\'\"]+)/;
+    blockOpenTop: /^\s*\[([^.\/][^\/]*)\]/,
+    blockCloseTop: /^\s*\[\]/,
+    blockOpenOneLevel: /^\s*\[\.\/([^.\/]+)\]/,
+    blockOpenOneLevelComment: /^\s*\[\.\/([^.\/]+)\][\s]*(#.*|$)/,
+    blockCloseOneLevel: /^\s*\[\.\.\/\]/,
+
+    paramLine: /^\s*([^\s#=\]]+)\s*=.*$/, // /^\s*([_a-zA-Z0-9]+)\s*=.*$/;
+    // if match, returns [line w/out comment, name, value, unquoted value | undefined]
+    paramValueLine: /^\s*([^\s#=\]]+)\s*=\s*('(\s*[^\s'#=\]]*[^'#=\]]*)'|[^\s#=\]]*)/, // /^\s*([_a-zA-Z0-9]+)\s*=\s*[\'\"]*([^#\'\"]+)/;
+};
 
 /**
  * A class to manage a MOOSE input document
@@ -218,7 +221,7 @@ export class MooseDoc {
         if (param.cpp_type in varType2Blocks) {
             return varType2Blocks[param.cpp_type];
         }
-        let match = stdVector.exec(param.cpp_type);
+        let match = rgx.stdVector.exec(param.cpp_type);
         if (match !== null) {
             let vecType = match[2];
             if (vecType in varType2Blocks) {
@@ -270,7 +273,7 @@ export class MooseDoc {
      */
     private async getMaterialDefinition(param: moosedb.ParamNode, matName: string, startRow: number = 0) {
         let node: ValueNode | null = null;
-        let match = stdVector.exec(param.cpp_type);
+        let match = rgx.stdVector.exec(param.cpp_type);
         if (param.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
 
             for (let subBlock of this.yieldSubBlocks(["Materials"], true, null, startRow)) {
@@ -439,7 +442,7 @@ export class MooseDoc {
                     node = param;
                 }
             }
-        } else if (!!(rmatch = paramLine.exec(line))) { // /^\s*([^\s#=\]]+)\s*=.*/
+        } else if (!!(rmatch = rgx.paramLine.exec(line))) { // /^\s*([^\s#=\]]+)\s*=.*/
             // value of parameter
             let paramName = rmatch[1];
             let vnode = await this.findValueReference(word, paramName, configPath, explicitType);
@@ -487,7 +490,7 @@ export class MooseDoc {
             completions = await this.completeTypeParameter(line, pos.column, configPath, explicitType);
         } else if (this.isParameterCompletion(line)) {
             completions = await this.completeParameter(configPath, explicitType);
-        } else if (!!(match = valueCompletion.exec(line))) {
+        } else if (!!(match = rgx.valueCompletion.exec(line))) {
             // special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
             // TODO factor out, see above
             let param: moosedb.ParamNode;
@@ -544,11 +547,11 @@ export class MooseDoc {
                 break;
             }
 
-            if (blockTagContent.test(tline) || blockCloseTop.test(tline) || blockCloseOneLevel.test(tline)) {
+            if (rgx.blockTagContent.test(tline) || rgx.blockCloseTop.test(tline) || rgx.blockCloseOneLevel.test(tline)) {
                 break;
             }
 
-            let blockArray = blockType.exec(tline);
+            let blockArray = rgx.blockType.exec(tline);
             if (blockArray !== null) {
                 types.push({ config: [], name: blockArray[1] });
                 break;
@@ -566,8 +569,8 @@ export class MooseDoc {
 
         while (true) {
             // test the current line for block markers
-            let tagArray = blockTagContent.exec(line);
-            let blockArray = blockType.exec(line);
+            let tagArray = rgx.blockTagContent.exec(line);
+            let blockArray = rgx.blockType.exec(line);
 
             if (tagArray !== null) {
                 // if (blockTagContent.test(line)) {
@@ -623,7 +626,7 @@ export class MooseDoc {
      * @param line 
      */
     private isOpenBracketPair(line: string) {
-        return insideBlockTag.test(line);
+        return rgx.insideBlockTag.test(line);
     }
 
     /** provide completions for an open bracket pair
@@ -692,14 +695,14 @@ export class MooseDoc {
 
     // check if the current line is a type parameter
     private isTypeParameter(line: string) {
-        return typeParameter.test(line);
+        return rgx.typeParameter.test(line);
     }
 
     /** checks if this is a vector type build the vector cpp_type name 
      * for a given single type (checks for gcc and clang variants)
      */
     private isVectorOf(cpp_type: string, type: string) {
-        let match = stdVector.exec(cpp_type);
+        let match = rgx.stdVector.exec(cpp_type);
         return (match !== null) && (match[2] === type);
     }
 
@@ -743,7 +746,7 @@ export class MooseDoc {
             let line = this.getDoc().getTextForRow(row);
 
             // scan through document, until a required block is open
-            if (regexMatch = blockOpenTop.exec(line)) {
+            if (regexMatch = rgx.blockOpenTop.exec(line)) {
                 if (blockNames.indexOf(regexMatch[1]) >= 0) {
                     // if the block has been found, remove it from the list
                     while (blockNames.indexOf(regexMatch[1]) >= 0) {
@@ -757,7 +760,7 @@ export class MooseDoc {
                         position: { row: row, column: line.indexOf('[') }
                     };
                 }
-            } else if (blockCloseTop.test(line)) {
+            } else if (rgx.blockCloseTop.test(line)) {
                 yield mainBlock;
                 mainBlockName = null;
                 // if all blocks have been found, then finish
@@ -771,9 +774,9 @@ export class MooseDoc {
                 continue;
             }
 
-            if (blockOpenOneLevel.test(line)) {
+            if (rgx.blockOpenOneLevel.test(line)) {
                 if (level === 0) {
-                    let blockopen = blockOpenOneLevel.exec(line);
+                    let blockopen = rgx.blockOpenOneLevel.exec(line);
                     if (blockopen !== null) {
                         subBlock = {
                             mainBlock: mainBlockName,
@@ -784,12 +787,12 @@ export class MooseDoc {
                     }
                 }
                 level++;
-            } else if (blockCloseOneLevel.test(line)) {
+            } else if (rgx.blockCloseOneLevel.test(line)) {
                 level--;
                 if (level === 0) {
                     yield subBlock;
                 }
-            } else if (level === 1 && gatherParameters && (regexMatch = paramValueLine.exec(line))) {
+            } else if (level === 1 && gatherParameters && (regexMatch = rgx.paramValueLine.exec(line))) {
                 let paramName = regexMatch[1];
                 let paramValue: string;
                 if (regexMatch[3] !== undefined) {
@@ -801,7 +804,7 @@ export class MooseDoc {
                     // TODO raise warning if paramName already set
                     subBlock.properties[paramName] = { row: row, line: line, value: paramValue };
                 }
-            } else if (level === 0 && gatherParameters && (regexMatch = paramValueLine.exec(line))) {
+            } else if (level === 0 && gatherParameters && (regexMatch = rgx.paramValueLine.exec(line))) {
                 let paramName = regexMatch[1];
                 let paramValue: string;
                 if (regexMatch[3] !== undefined) {
@@ -1018,7 +1021,7 @@ export class MooseDoc {
         } else {
             // special case where 'type' is an actual parameter (such as /Executioner/Quadrature)
             // TODO factor out, see below
-            let otherArray = valueCompletion.exec(line);
+            let otherArray = rgx.valueCompletion.exec(line);
             if (otherArray !== null) {
                 let paramName = otherArray[1];
                 let param: moosedb.ParamNode;
@@ -1039,7 +1042,7 @@ export class MooseDoc {
      * @param line 
      */
     private isParameterCompletion(line: string) {
-        return parameterCompletion.test(line);
+        return rgx.parameterCompletion.test(line);
     }
 
     private async completeParameter(configPath: string[], explicitType: string | null) {
@@ -1161,24 +1164,24 @@ export class MooseDoc {
 
             emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors, line);
 
-            if (blockOpenTop.test(line)) {
+            if (rgx.blockOpenTop.test(line)) {
                 await this.assessMainBlock(
                     currLevel, syntaxErrors, row, line, outlineItems, globalParamDict, refsDict);
                 currLevel = 1;
                 indentLevel = 0;
-            } else if (blockCloseTop.test(line)) {
+            } else if (rgx.blockCloseTop.test(line)) {
                 await this.closeMainBlock(
                     currLevel, syntaxErrors, row, line, outlineItems, globalParamDict, refsDict);
                 currLevel = 0;
                 indentLevel = 0;
-            } else if (blockOpenOneLevel.test(line)) {
+            } else if (rgx.blockOpenOneLevel.test(line)) {
                 currLevel = await this.assessSubBlock(currLevel, syntaxErrors, row, line, outlineItems);
                 indentLevel = currLevel - 1;
-            } else if (blockCloseOneLevel.test(line)) {
+            } else if (rgx.blockCloseOneLevel.test(line)) {
                 currLevel = await this.closeSubBlock(
                     currLevel, syntaxErrors, row, line, outlineItems, globalParamDict, refsDict);
                 indentLevel = currLevel;
-            } else if (paramValueLine.test(line)) {
+            } else if (rgx.paramValueLine.test(line)) {
                 await this.assessParameter(line, outlineItems, row, currLevel);
                 indentLevel = currLevel;
             } else {
@@ -1229,7 +1232,7 @@ export class MooseDoc {
 
     /** detect multiple blank lines */
     private detectBlankLines(emptyLines: number[], row: number, syntaxErrors: SyntaxError[], line: string | null = null) {
-        if (line !== null && emptyLine.test(line)) {
+        if (line !== null && rgx.emptyLine.test(line)) {
             emptyLines.push(row);
         }
         else {
@@ -1276,7 +1279,7 @@ export class MooseDoc {
         }
 
         // get name of the block
-        let blocknames = blockOpenTop.exec(line);
+        let blocknames = rgx.blockOpenTop.exec(line);
         blockName = blocknames !== null ? blocknames[1] : '';
         if (outlineItems.map(o => o.name).indexOf(blockName) !== -1) {
             syntaxErrors.push({
@@ -1367,7 +1370,7 @@ export class MooseDoc {
         }
 
         // get name of the block
-        let blockregex = blockOpenOneLevel.exec(line);
+        let blockregex = rgx.blockOpenOneLevel.exec(line);
         currBlockName = blockregex !== null ? blockregex[1] : '';
 
         currLevel++;
@@ -1416,7 +1419,7 @@ export class MooseDoc {
         // let nameRegex = paramLine.exec(line);
         // let paramName = nameRegex !== null ? nameRegex[1] : '';
 
-        let regex = paramValueLine.exec(line);
+        let regex = rgx.paramValueLine.exec(line);
 
         if (regex === null) { return; }
         
@@ -1685,7 +1688,7 @@ export class MooseDoc {
                                     syntaxErrors.push(error);
                                 }
                             } else {
-                                let match = stdVector.exec(node.cpp_type);
+                                let match = rgx.stdVector.exec(node.cpp_type);
                                 if (node.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
                                     if ("Materials/" + pvalue in refsDict) {
                                         refsDict["Materials/" + pvalue]["refs"].push(param.start);
