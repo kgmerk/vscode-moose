@@ -98,10 +98,10 @@ suite("MooseDoc Tests", function () {
     });
 
     test("findCurrentNode; sub-block", function () {
-        doc.text = "[BCs]\n[./Periodic]\n[./c_bcs]";
+        doc.text = "[BCs]\n[./Periodic]\n[./c_b-cs]";
         let cursor = { row: 2, column: 5 };
         return expect(mdoc.findCurrentNode(cursor)
-        ).to.eventually.be.an('object').with.property('path').eql(['BCs', 'Periodic', 'c_bcs']);
+        ).to.eventually.be.an('object').with.property('path').eql(['BCs', 'Periodic', 'c_b-cs']);
     });
 
     test("findCurrentNode; sub-block defining variable", function () {

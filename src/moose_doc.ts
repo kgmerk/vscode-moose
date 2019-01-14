@@ -158,15 +158,15 @@ export class MooseDoc {
 
     /** given a position in the document, get the word that it sits on
      * 
-     * @param regex defines the characters that a word comprises of
+     * @param allowChars defines the characters that a word comprises of, e.g. "-_0-9a-zA-Z"
      */
-    private static getWordAt(line: string, column: number, regex: string = "-_0-9a-zA-Z") {
+    private static getWordAt(line: string, column: number, allowChars: string) {
 
         let word: string;
         let range: [number, number];
 
-        let left_regex = new RegExp("[" + regex + "]+$"); // $ matches the end of a line
-        let right_regex = new RegExp("[^" + regex + "]");
+        let left_regex = new RegExp("[" + allowChars + "]+$"); // $ matches the end of a line
+        let right_regex = new RegExp("[^" + allowChars + "]");
 
         // Search for the word's beginning
         let left = line.slice(0, column + 1).search(left_regex);
@@ -343,9 +343,9 @@ export class MooseDoc {
     /** find node for a cursor position, and the path to it
     * 
     * @param pos position of cursor
-    * @param regex defines characters allowed in a word
+    * @param wordChars defines characters allowed in a word
     */
-    public async findCurrentNode(pos: Position, regex: string = "_0-9a-zA-Z") {
+    public async findCurrentNode(pos: Position, wordChars: string = "-_0-9a-zA-Z") {
 
         let match: null | moosedb.NodeMatch = null;
         let node: moosedb.SyntaxNode | moosedb.ParamNode | ValueNode | null = null;
@@ -354,7 +354,7 @@ export class MooseDoc {
         let reference: [string, string, string] | null = null;
 
         let line = this.getDoc().getTextForRow(pos.row);
-        let wordMatch = MooseDoc.getWordAt(line, pos.column, regex);
+        let wordMatch = MooseDoc.getWordAt(line, pos.column, wordChars);
         if (wordMatch === null) {
             return null;
         }
