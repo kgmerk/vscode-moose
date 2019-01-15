@@ -42,9 +42,30 @@ These can also be created within VS Code *via* selecting '`MOOSE: Create Syntax 
 
 By default, these files are expected to be in the top-level of the workspace, but their paths can be altered in the [Settings](#settings).
 
-## Auto-Completion
+## Auto-Completion and Definition/Reference Identification
 
 Autocompletion is triggered either by `Ctrl+Space` or typing `[` or `=`.
+
+Note that if there is an inline comment at a variable description,
+e.g. `[./a] # describe the variable`, this comment will show in the auto-completion.
+
+### Defining Material Property Names
+
+Material property names are defined in the Material C++ object files, using the `declareProperty` method.
+However, these names are resolved dynamically (at runtime), and so are not directly available for static analysis.
+
+VSCode for MOOSE attempts to find material property name definitions (or defaults) for common materials, including:
+
+- `f_name` (used by `FunctionMaterialBase`)
+- `prop_names` (used by `GenericConstantMaterial` and `GenericFunctionMaterial`)
+- `tensor_name` (used by `GenericConstantRankTwoTensor`)
+- `property` (used by `PiecewiseLinearInterpolationMaterial`)
+- `function_name` (used by `OrderParameterFunctionMaterial`)
+
+To override these definitions and/or specify other names that a Material sub-block defines,
+an inline comment should be added to the sub-block, which includes `<defines: name1 name2>`:
+
+![mat_references](images/mat_references.gif)
 
 ## File Diagnostics
 
@@ -83,7 +104,7 @@ Format as you type can also be set in the [general settings](https://code.visual
 Settings are configured in `Preferences -> Settings`:
 
 | Name                        | Description                                              |
-| --------------------------- | ---------------------------------------------------------|
+| --------------------------- | -------------------------------------------------------- |
 | `moose.syntax.yaml`         | the path of the YAML file                                |
 | `moose.syntax.json`         | the path of the JSON file                                |
 | `moose.tab.space`           | the number of spaces per indentation                     |
@@ -159,6 +180,12 @@ Fixed some bugs:
 
 - added diagnostics of internal variable/material references
 - split diagnostics user option to set which error types are flagged as errors or warnings
+
+### 0.10.0
+
+- added reading of comments, inline to block openings
+- added overriding of materials properties via identifying `<defines: >` in inline Materials sub-block comment
+- performance improvements for building outline / diagnostics
 
 ## Acknowledgements
 
