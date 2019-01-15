@@ -7,14 +7,7 @@ import ppath = require('path');
 import * as fs from 'fs';
 
 import * as moosedb from './moose_syntax';
-
-/**
- * position within a document
- */
-export interface Position {
-    row: number;
-    column: number;
-}
+import { Position, Definition } from './shared';
 
 /**
  * an implementation agnostic document interface
@@ -38,7 +31,7 @@ export interface Document {
     /**
      * iterate over all lines of the document
      */
-    iterLines(initRow: number): IterableIterator<{ row: number, line: string }>; 
+    iterLines(initRow: number): IterableIterator<{ row: number, line: string }>;
     // TODO add optional start/end rows to iterLines
 }
 
@@ -88,8 +81,10 @@ export interface SyntaxError {
 /** a dictionary to hold variables and where they were instantiated and referenced in the doc */
 export interface VariableRefs {
     [id: string]: { // the key for the main block
-        instPos: Position, // the position on which the variable is instantiated
-        instSubBlock: string,
+        // instPos: Position, // the position on which the variable is instantiated
+        // instSubBlock?: string,
+        // instFile?: string,
+        definition?: Definition,
         refs: Position[] // positions at which the variable is referenced
     };
 }
@@ -98,11 +93,7 @@ export interface VariableRefs {
 export interface ValueNode {
     name: string;
     description: string;
-    defPath: [string, string]; // path to subblock
-    // paramNode: moosedb.ParamNode;
-    file?: string; // path to the definition (if undefined then in same document as value)
-    defPosition: Position; // position of the definition
-    defType?: string; // the type of the variable (used for materials)
+    definition: Definition;
 }
 
 export interface SubBlock {
@@ -257,7 +248,7 @@ export class MooseDoc {
 
     private async getMaterialDefinitions(subBlock: SubBlock) {
         if (subBlock.comment) {
-            let cMatch: RegExpExecArray | null
+            let cMatch: RegExpExecArray | null;
             if (cMatch = rgx.materialDefines.exec(subBlock.comment)) {
                 let type: undefined | string = undefined;
                 if ("type" in subBlock.properties) {
@@ -278,7 +269,7 @@ export class MooseDoc {
         let allDefs = [];
 
         for (let subBlock of this.yieldSubBlocks(["Materials"], true)) {
-            if (subBlock.name === null) { continue;}
+            if (subBlock.name === null) { continue; }
             let defs = await this.getMaterialDefinitions(subBlock);
             if (defs === null) { continue; }
             for (let defName of defs.names) {
@@ -335,10 +326,13 @@ export class MooseDoc {
 
                     node = {
                         name: matName,
-                        defType: defs.type,
-                        defPath: ["Materials", subBlock.name],
                         description: "Referenced Material",
-                        defPosition: position
+                        definition: {
+                            key: ["Materials", matName].join("/"),
+                            position: position,
+                            type: defs.type,
+                            description: ""
+                        }
                     };
                     return node;
                 }
@@ -370,14 +364,17 @@ export class MooseDoc {
                 }
                 if (blockNames) {
                     for (let blockName of blockNames) {
-                        for (let { name, position } of this.yieldSubBlocks([blockName])) {
+                        for (let { name, position, comment } of this.yieldSubBlocks([blockName])) {
                             if (name === value) {
                                 // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
                                 node = {
                                     name: name,
-                                    defPath: [blockName, name],
                                     description: "Referenced " + blockName.slice(0, blockName.length - 1),
-                                    defPosition: position
+                                    definition: {
+                                        key: [blockName, name].join("/"),
+                                        position: position,
+                                        description: !!comment ? comment : ""
+                                    }
                                 };
                                 break;
                             }
@@ -402,6 +399,16 @@ export class MooseDoc {
         return node;
     }
 
+    private replaceSubBlockNode(configPath: string[], replace: string = "*") {
+        let path: string[];
+        if (configPath.length > 1) {
+            path = configPath.slice(0, configPath.length - 1).concat([replace]);
+        } else {
+            path = configPath;
+        }
+        return path
+    }
+
     /** find node for a cursor position, and the path to it
     * 
     * @param pos position of cursor
@@ -409,11 +416,10 @@ export class MooseDoc {
     */
     public async findCurrentNode(pos: Position, wordChars: string = "-_0-9a-zA-Z") {
 
-        let match: null | moosedb.NodeMatch = null;
+        let matchBlock: null | moosedb.NodeMatch = null;
         let node: moosedb.SyntaxNode | moosedb.ParamNode | ValueNode | null = null;
         let rmatch: RegExpExecArray | null;
-        let defines: [string, string][] | null = null;
-        let reference: [string, string] | null = null;
+        let defines: string[] | null = null;
 
         let line = this.getDoc().getTextForRow(pos.row);
         let wordMatch = MooseDoc.getWordAt(line, pos.column, wordChars);
@@ -427,49 +433,55 @@ export class MooseDoc {
         if (line.slice(start - 1, end + 1) === "[" + word + "]") {
             // block
             configPath.push(word);
-            match = await this.syntaxdb.matchSyntaxNode(configPath);
-            if (!match) {
+            matchBlock = await this.syntaxdb.matchSyntaxNode(configPath);
+            if (!matchBlock) {
                 return null;
             }
-            node = match.node;
+            node = matchBlock.node;
         } else if (line.slice(start - 3, end + 1) === "[./" + word + "]") {
             //sub-block
             configPath.push(word);
-            match = await this.syntaxdb.matchSyntaxNode(configPath);
-            if (!match) {
+            if (explicitType === null) {
+                matchBlock = await this.syntaxdb.matchSyntaxNode(configPath);
+            } else {
+                // the type parameter value supercedes the subblock name
+                matchBlock = await this.syntaxdb.matchSyntaxNode(
+                    this.replaceSubBlockNode(configPath));
+            }
+            if (!matchBlock) {
                 return null;
             }
-            node = match.node;
+            node = matchBlock.node;
             // check if the subblock is defining a variable or material
             if (configPath.length === 2 && ['Variables', 'AuxVariables', 'Functions',
                 'Postprocessors', 'UserObjects', 'VectorPostprocessors'].indexOf(configPath[0]) >= 0) {
-                defines = [[configPath[0], configPath[1]]];
+                defines = [[configPath[0], configPath[1]].join("/")];
             }
             else if (configPath.length === 2 && configPath[0] === "Materials") {
-                let blockDefs: [string, string][] = [];
-                
-                for (let subBlock of this.yieldSubBlocks(["Materials"], true)) { 
+                let blockDefs: string[] = [];
+
+                for (let subBlock of this.yieldSubBlocks(["Materials"], true)) {
                     if (subBlock.name !== configPath[1]) { continue; }
                     let defs = await this.getMaterialDefinitions(subBlock);
                     if (defs === null) { break; }
                     for (let matName of defs.names) {
-                        blockDefs.push(["Materials", matName]);
+                        blockDefs.push(["Materials", matName].join("/"));
                     }
                 }
                 if (blockDefs.length > 0) { defines = blockDefs; }
             }
-        } else if (/\s*type\s*=\s*/.test(line.slice(0, start - 1))) {
-            // type parameter
-            match = await this.syntaxdb.matchSyntaxNode(configPath);
-            if (match !== null) {
-                let typedPath = this.syntaxdb.getTypedPath(configPath, word, match.fuzzyOnLast);
-                match = await this.syntaxdb.matchSyntaxNode(typedPath);
+        } else if (/\s*type\s*=\s*/.test(line.slice(0, start - 1))) {         
+            matchBlock = await this.syntaxdb.matchSyntaxNode(
+                this.replaceSubBlockNode(configPath)); // the type parameter value supercedes the subblock name
+            if (matchBlock !== null) {
+                let typedPath = this.syntaxdb.getTypedPath(configPath, word, matchBlock.fuzzyOnLast);
+                matchBlock = await this.syntaxdb.matchSyntaxNode(typedPath);
                 configPath.push(word);
             }
-            if (!match) {
+            if (!matchBlock) {
                 return null;
             }
-            node = match.node;
+            node = matchBlock.node;
         } else if (/\s*=.*/.test(line.slice(end + 1))) {
             // parameter name
             let params = await this.syntaxdb.fetchParameterList(configPath, explicitType);
@@ -488,9 +500,7 @@ export class MooseDoc {
             let vnode = await this.findValueReference(word, paramName, configPath, explicitType);
             if (vnode) {
                 node = vnode;
-                // configPath = vnode.defPath;
                 configPath.push(paramName, word);
-                reference = [vnode.defPath[0], word];
             }
         }
 
@@ -503,7 +513,6 @@ export class MooseDoc {
             path: configPath,
             range: [start, end],
             defines: defines,
-            referenceTo: reference
         };
     }
 
@@ -527,7 +536,9 @@ export class MooseDoc {
             // for empty [] we suggest blocks
             completions = await this.completeOpenBracketPair(pos, configPath);
         } else if (this.isTypeParameter(line)) {
-            completions = await this.completeTypeParameter(line, pos.column, configPath, explicitType);
+            // the type parameter value supercedes the subblock name
+            let path = this.replaceSubBlockNode(configPath);
+            completions = await this.completeTypeParameter(line, pos.column, path, explicitType);
         } else if (this.isParameterCompletion(line)) {
             completions = await this.completeParameter(configPath, explicitType);
         } else if (!!(match = rgx.valueCompletion.exec(line))) {
@@ -567,95 +578,91 @@ export class MooseDoc {
     /** determine the active block path at the current position
      * 
      * @param pos position of cursor
+     * @returns explicitType represents the type set by `type = <value>`
      */
     public async getCurrentConfigPath(pos: Position) {
 
         let configPath: string[] = [];
         let types: { config: string[], name: string }[] = [];
-        let { row } = pos;
-        let typePath;
+        let typePath: { config: string[], name: string };
+        let type: string | null = null;
 
-        let line = this.getDoc().getTextInRange({ row: pos.row, column: 0 }, pos);
+        let { row } = pos;
 
         let normalize = (configPath: string[]) => ppath.join.apply(undefined, configPath).split(ppath.sep);
 
-        // find type path if below cursor line
+        // find type name if on or below cursor line
         let trow = row;
-        let tline = line;
+        let tline = this.getDoc().getTextForRow(trow);
+        let typeOnCursorLine = false;
         while (true) {
+
             if (trow + 1 >= this.getDoc().getLineCount()) {
                 break;
-            }
-
-            if (rgx.blockTagContent.test(tline) || rgx.blockCloseTop.test(tline) || rgx.blockCloseOneLevel.test(tline)) {
+            } else if (rgx.blockCloseTop.test(tline) || rgx.blockCloseOneLevel.test(tline)) {
                 break;
+            } else if (rgx.blockOpenTop.test(tline) || rgx.blockOpenOneLevel.test(tline)) {
+                if (trow !== row) {
+                    break;  // TODO for completeness should not break but skip over sub-blocks
+                }
             }
 
-            let blockArray = rgx.blockType.exec(tline);
-            if (blockArray !== null) {
-                types.push({ config: [], name: blockArray[1] });
+            let typeArray = rgx.blockType.exec(tline);
+            if (typeArray !== null) {
+                if (trow === row) { typeOnCursorLine = true; }
+                types.push({ config: [], name: typeArray[1] });
                 break;
             }
 
             trow += 1;
             tline = this.getDoc().getTextForRow(trow);
-
-            // remove comments
-            let commentCharPos = tline.indexOf('#');
-            if (commentCharPos >= 0) {
-                tline = tline.substr(0, commentCharPos);
-            }
         }
 
+        // for the first line we only use up to to the cursor position
+        let line = this.getDoc().getTextInRange({ row: pos.row, column: 0 }, pos);
         while (true) {
-            // test the current line for block markers
-            let tagArray = rgx.blockTagContent.exec(line);
-            let blockArray = rgx.blockType.exec(line);
+            // test the current line for block and type markers
+            let blockNameRegex = rgx.blockTagContent.exec(line);
+            let typeNameRegex = rgx.blockType.exec(line);
 
-            if (tagArray !== null) {
-                // if (blockTagContent.test(line)) {
-                let tagContent = tagArray[1].split('/');
+            if (blockNameRegex !== null) {
 
-                // [] top-level close
-                if (tagContent.length === 1 && tagContent[0] === '') {
+                let blockName = blockNameRegex[1].split('/');
+
+                // [] top-level closure
+                if (blockName.length === 1 && blockName[0] === '') {
                     return { configPath: [] as string[], explicitType: null };
                 } else {
-                    // prepend the tagContent entries to configPath
-                    Array.prototype.unshift.apply(configPath, tagContent);
+                    // prepend the blockName entries to the configPath
+                    Array.prototype.unshift.apply(configPath, blockName);
+                    // prepend the blockName entries to the typePath(s)
                     for (typePath of Array.from(types)) {
-                        Array.prototype.unshift.apply(typePath.config, tagContent);
+                        Array.prototype.unshift.apply(typePath.config, blockName);
                     }
                 }
 
-                if (tagContent[0] !== '.' && tagContent[0] !== '..') {
+                if (blockName[0] !== '.' && blockName[0] !== '..') {
                     break;
                 }
-                // test for a type parameter
-                // } else if (blockType.test(line)) {
-            } else if (blockArray !== null) {
-                types.push({ config: [], name: blockArray[1] });
+            } else if (typeNameRegex !== null && !typeOnCursorLine) {
+                types.push({ config: [], name: typeNameRegex[1] });
             }
 
-            // decrement row and fetch line (if we have not found a path we assume
-            // we are at the top level)
+            // decrement row and fetch line 
+            // (if we have not found a path we assume we are at the top level)
             row -= 1;
             if (row < 0) {
                 return { configPath: [] as string[], explicitType: null };
             }
             line = this.getDoc().getTextForRow(row);
 
-            // remove comments
-            let commentCharPos = line.indexOf('#');
-            if (commentCharPos >= 0) {
-                line = line.substr(0, commentCharPos);
-            }
         }
 
         configPath = normalize(configPath);
-        let type: string | null = null;
-        for (typePath of Array.from(types)) {
+        for (typePath of types) {
             if (normalize(typePath.config).join('/') === configPath.join('/')) {
                 type = typePath.name;
+                break;
             }
         }
         return { configPath, explicitType: type };
@@ -778,7 +785,7 @@ export class MooseDoc {
                         name: null,
                         properties: {},
                         position: { row: row, column: line.indexOf('[') },
-                        comment: regexMatch[3]
+                        comment: !!regexMatch[3] ? regexMatch[3].trim() : regexMatch[3]
                     };
                 }
             } else if (rgx.blockCloseTop.test(line)) {
@@ -803,7 +810,7 @@ export class MooseDoc {
                             name: blockOpen[1],
                             properties: {},
                             position: { row: row, column: line.indexOf('[') + 2 },
-                            comment: blockOpen[3]
+                            comment: !!blockOpen[3] ? blockOpen[3].trim() : blockOpen[3]
                         };
                     }
                 }
@@ -1156,16 +1163,26 @@ export class MooseDoc {
                 "UserObjects", "Functions"
             ])) {
                 if (name !== null) {
-                    if ([mainBlock, name].join("/") in refsDict) {
+                    let key = [mainBlock, name].join("/");
+                    if (key in refsDict) {
                         // error already handled when checking for subblock duplication
                         continue;
                     }
-                    refsDict[[mainBlock, name].join("/")] = { instPos: position, instSubBlock: name, refs: [] };
+                    refsDict[key] = {
+                        definition: {
+                            position: position,
+                            description: "",
+                            key: key
+                            // subblock: name
+                        },
+                        refs: []
+                    };
                 }
             }
             for (let { name, block, position } of await this.getAllMaterialDefinitions()) {
                 if (name !== null) {
-                    if (["Materials", name].join("/") in refsDict) {
+                    let key = ["Materials", name].join("/");
+                    if (key in refsDict) {
                         syntaxErrors.push({
                             type: "duplication",
                             start: position,
@@ -1174,10 +1191,17 @@ export class MooseDoc {
                         });
                         continue;
                     }
-                    refsDict[["Materials", name].join("/")] = { instPos: position, instSubBlock: block, refs: [] };
+                    refsDict[key] = {
+                        definition: {
+                            position: position,
+                            description: "",
+                            key: key
+                            // subblock: block
+                        },
+                        refs: []
+                    };
                 }
             }
-            // TODO add error if same variable or material name is defined multiple times
         }
 
         // step through document
@@ -1443,7 +1467,7 @@ export class MooseDoc {
         let regex = rgx.paramValueLine.exec(line);
 
         if (regex === null) { return; }
-        
+
         let paramName = regex[1];
         let paramValue: string | null;
         if (regex[3] !== undefined) {
@@ -1709,9 +1733,36 @@ export class MooseDoc {
                                     };
                                     syntaxErrors.push(error);
                                 }
+                            } if (param.name === "type") { 
+                                // TODO make optional, also want to ensure that doesn't overwrite variable/material keys
+                                // let key: string;
+                                // let path: string[]
+                                // if (parentPath.length === 0) {
+                                //     key = [block.name, param.value].join("/");
+                                //     path = [block.name, "<type>", param.value];
+                                // } else {
+                                //     key = [parentPath[0], param.value].join("/");
+                                //     path = [parentPath[0], param.value];
+                                // }
+                                // if (key in refsDict) {
+                                //     refsDict[key].refs.push(param.start);
+                                // } else {
+                                //     let match = await this.syntaxdb.matchSyntaxNode(path);
+                                //     if (match && !!match.node.definition) {
+                                //         refsDict[key] = {
+                                //             definition: match.node.definition,
+                                //             refs: [param.start]
+                                //         };
+                                //     } else {
+                                //         refsDict[key] = {
+                                //             refs: [param.start]
+                                //         };
+                                //         // TODO add warning that definition not found
+                                //     }
+                                // }
                             } else {
-                                let match = rgx.stdVector.exec(node.cpp_type);
-                                if (node.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
+                                let paramTypeMatch = rgx.stdVector.exec(node.cpp_type);
+                                if (node.cpp_type === "MaterialPropertyName" || (paramTypeMatch !== null && paramTypeMatch[2] === "MaterialPropertyName")) {
                                     if ("Materials/" + pvalue in refsDict) {
                                         refsDict["Materials/" + pvalue]["refs"].push(param.start);
                                     } else if (!isNaN(parseInt(pvalue))) {

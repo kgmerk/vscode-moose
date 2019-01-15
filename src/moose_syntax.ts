@@ -8,6 +8,7 @@ import * as yaml from 'js-yaml';
 import * as ppath from 'path';
 import * as util from 'util';
 import * as cp from 'child_process';
+import { Definition } from './shared';
 
 // interface for dictionary returned by ./moose-app --yaml
 export interface ParamNode {
@@ -24,7 +25,7 @@ export interface SyntaxNode {
     description: string;
     parameters: ParamNode[] | null;
     subblocks: SyntaxNode[] | null;
-    file?: string;
+    definition?: Definition;
 }
 export interface JsonNode {
     [item: string]: JsonNode | string | boolean | number;
@@ -404,7 +405,7 @@ export class MooseSyntaxDB {
         let match = matchList[0];
 
         // append json data
-        if (addJsonData && (util.isUndefined(match.node.file))) {
+        if (addJsonData && (util.isUndefined(match.node.definition))) {
             await this.addJSONData(match.node, configPath);
         }
 
@@ -421,26 +422,39 @@ export class MooseSyntaxDB {
             return success;
         }
 
-        let jsonNode = null;
+        let jsonNode: null | JsonNode = null;
+        let key: string = "";
+
         if (configPath.length === 2) {
-            jsonNode = this.getKeyPath(await this.jsonNodes, ["blocks", configPath[0], "star",
-                "subblock_types", configPath[1]]);
+            try {
+                jsonNode = this.getKeyPath(await this.jsonNodes, ["blocks", configPath[0], "star",
+                    "subblock_types", configPath[1]]);
+            } catch(err) {
+                this.handleWarning(err);
+            }
+            key = configPath.join("/");
         }
         if (configPath.length === 3) {
             if (configPath[1] === "<type>") {
                 jsonNode = this.getKeyPath(await this.jsonNodes, ["blocks", configPath[0],
                     "types", configPath[2]]);
             }
+            key = configPath[0] + "/" + configPath[2];
         }
         if (jsonNode !== null) {
             if ("syntax_path" in jsonNode) {
                 if (jsonNode["syntax_path"] === configPath.join("/")) {
                     success = true;
                     if ("description" in jsonNode) {
-                        node.description = jsonNode["description"];
+                        node.description = String(jsonNode["description"]);
                     }
                     if ("register_file" in jsonNode) {
-                        node.file = jsonNode["register_file"];
+                        node.definition = {
+                            description: "C++ Object",
+                            key: key,
+                            position: { row: 0, column: 0 },
+                            file: String(jsonNode["register_file"])
+                        };
                     }
                 }
 
@@ -458,7 +472,7 @@ export class MooseSyntaxDB {
 
         for (let subNode of Array.from(node.subblocks || [])) {
             // append json data
-            if (addJsonData && (util.isUndefined(subNode.file))) {
+            if (addJsonData && (util.isUndefined(subNode.definition))) {
                 // TODO do we need to deal with typed paths?
                 await this.addJSONData(subNode, subNode.name.substr(1).split("/"));
             }
@@ -470,7 +484,7 @@ export class MooseSyntaxDB {
     }
 
     // get the leaf node of a nested dictionary path
-    private getKeyPath(nodes: any, keyPath: string[]) {
+    private getKeyPath(nodes: any, keyPath: string[]): null | JsonNode {
         for (let key of keyPath) {
             if (!util.isObject(nodes)) {
                 return null;
@@ -685,7 +699,7 @@ export class MooseSyntaxDB {
                     if (potName in paramsDict) {
                         value = paramsDict[potName].value;
                     } else {
-                        value = mparam.default
+                        value = mparam.default;
                     }
                     return {
                         names: value.split(/\s+/).filter(Boolean), // filter removes zero-length strings

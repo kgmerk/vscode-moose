@@ -5,7 +5,8 @@ import * as vscode from 'vscode';
 import * as ppath from 'path';
 
 import { MooseSyntaxDB } from './moose_syntax';
-import { Document, Position } from './moose_doc';
+import { Document } from './moose_doc';
+import { Position } from "./shared";
 import {
     DefinitionProvider, HoverProvider, OnTypeFormattingEditProvider,
     DocumentFormattingEditProvider, CompletionItemProvider,

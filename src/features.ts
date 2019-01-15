@@ -2,7 +2,8 @@
 
 import * as vscode from 'vscode';
 
-import { MooseDoc, OutlineBlockItem, OutlineParamItem, Position } from './moose_doc';
+import { MooseDoc, OutlineBlockItem, OutlineParamItem } from './moose_doc';
+import { Position } from "./shared";
 import { VSDoc } from './extension';
 import { MooseSyntaxDB } from './moose_syntax';
 
@@ -67,13 +68,13 @@ export class DefinitionProvider implements vscode.DefinitionProvider {
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let pos = { row: position.line, column: position.character };
         let match = await mooseDoc.findCurrentNode(pos);
-        if (match !== null && "defPosition" in match.node) {
-            return new vscode.Location(document.uri,
-                new vscode.Position(match.node.defPosition.row, match.node.defPosition.column));
-        } else if (match !== null && "file" in match.node) {
-            if (match.node.file !== undefined) {
-                return new vscode.Location(vscode.Uri.file(match.node.file), new vscode.Position(0, 0));
+        if (match !== null && "definition" in match.node && match.node.definition) {
+            let def = match.node.definition;
+            let uri = document.uri;
+            if ("file" in def && def.file) {
+                uri = vscode.Uri.file(def.file);
             }
+            return new vscode.Location(uri, createVSPos(def.position));
         }
         throw Error('no definition available');
     }
@@ -92,23 +93,23 @@ export class HoverProvider implements vscode.HoverProvider {
         let pos = { row: line, column: character };
         let match = await mooseDoc.findCurrentNode(pos);
         if (match !== null) {
-            let { node, path, range, defines, referenceTo } = match;
+            let { node, path, range, defines } = match;
             let mkdown = new vscode.MarkdownString();
             let descript = "**" + path.join("/") + "**\n\n" + node.description;
             if (defines !== null) {
-                descript += "\n\nDefines: \n" + defines.reduce((total, def) => total + "\n- " + def.join("/"), "");
+                descript += "\n\n**Defines**: \n" + defines.reduce((total, def) => total + "\n- `" + def + "`", "");
             }
-            if (referenceTo !== null) {
-                descript += "\n\nReferences: " + referenceTo.join("/");
-            }
-            if ("defType" in node && node.defType) {
-                descript += "\n\nType: " + node.defType;
+            if ("definition" in node  && node.definition) {
+                descript += "\n\n**References**: `" + node.definition.key + "` " + node.definition.description;
+                if ("type" in node.definition && !!node.definition.type) {
+                    descript += "\n\n**Type**: `" + node.definition.type + "`";
+                }
             }
             if ("cpp_type" in node && node.cpp_type) {
-                descript += "\n\nC++ type: " + node.cpp_type;
+                descript += "\n\n**C++ Type**: `" + node.cpp_type + "`";
             }
             if ("options" in node && node.options) {
-                descript += "\n\nOptions: " + node.options.split(" ").join(", ");
+                descript += "\n\n**Options**: " + node.options.split(" ").join(", ");
             }
             mkdown.appendMarkdown(descript);
             let hover = new vscode.Hover(mkdown, new vscode.Range(new vscode.Position(line, range[0]), new vscode.Position(line, range[1])));
@@ -333,7 +334,7 @@ export class CodeActionsProvider implements vscode.CodeActionProvider {
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let incRefs = false;
         if (dtypes.indexOf("refcheck") >= 0 || dtypes.indexOf("matcheck") >= 0) {
-            incRefs = true
+            incRefs = true;
         }
         let { outline, errors } = await mooseDoc.assessDocument(incRefs);
         for (let error of errors) {
@@ -432,24 +433,28 @@ export class ReferenceProvider implements vscode.ReferenceProvider {
         let mooseDoc = new MooseDoc(this.mooseSyntaxDB, new VSDoc(document));
         let pos = { row: position.line, column: position.character };
         let match = await mooseDoc.findCurrentNode(pos);
-        if (match !== null && (match.defines || match.referenceTo)) {
+        if (match !== null && (match.defines || "definition" in match.node)) {
             let { refs } = await mooseDoc.assessDocument(true);
             if (refs === null) { return locations; }
             let keys: string[] = [];
             if (match.defines) {
-                for (let def of match.defines) {
-                    keys.push(def.join("/"));
-                }
+                keys.push(...match.defines);
             }
-            if (match.referenceTo) {
-                keys.push(match.referenceTo.join("/"));
+            if ("definition" in match.node && match.node.definition) {
+                keys.push(match.node.definition.key);
             }
-
             for (let key of keys) {
                 if (!(key in refs)) { return locations; }
-                locations.push(new vscode.Location(
-                    document.uri, createVSPos(refs[key].instPos)));
-                for (let refPos of refs[key].refs) {
+                let uri = document.uri;
+                let ref = refs[key];
+                if (!!ref.definition) {
+                    if ("file" in ref.definition && !!ref.definition.file) {
+                        uri = vscode.Uri.file(ref.definition.file);
+                    }
+                    locations.push(new vscode.Location(
+                        uri, createVSPos(ref.definition.position)));
+                }
+                for (let refPos of ref.refs) {
                     locations.push(new vscode.Location(
                         document.uri, createVSPos(refPos)));
                 }

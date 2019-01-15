@@ -17,6 +17,7 @@ var expect = chai.expect;
 
 import * as moosedoc from '../moose_doc';
 import * as moosedb from '../moose_syntax';
+import { Position } from '../shared';
 
 /**
  * a class with the simplest implementation of a Document interface
@@ -33,7 +34,7 @@ class TestDoc implements moosedoc.Document {
     getLineCount() {
         return this.text.split('\n').length;
     }
-    getTextInRange(start: moosedoc.Position, end: moosedoc.Position) {
+    getTextInRange(start: Position, end: Position) {
         let i: number;
         let out: string[] = [];
         let lines = this.text.split('\n');
@@ -67,7 +68,7 @@ class TestDoc implements moosedoc.Document {
                 yield { row: row, line: line };
             }
             row++;
-       }
+        }
     }
 
 }
@@ -117,7 +118,21 @@ suite("MooseDoc Tests", function () {
         doc.text = "[Variables]\n[./abc]\n[../]\n[]";
         let cursor = { row: 1, column: 5 };
         return expect(mdoc.findCurrentNode(cursor)
-        ).to.eventually.be.an('object').with.property('defines').eql([['Variables', 'abc']]);
+        ).to.eventually.be.an('object').with.property('defines').eql(['Variables/abc']);
+    });
+
+    test("findCurrentNode; sub-block defining DerivativeParsedMaterial", function () {
+        doc.text = "[Materials]\n[./abc]\ntype=DerivativeParsedMaterial\nf_name=x\n[../]\n[]";
+        let cursor = { row: 1, column: 5 };
+        return expect(mdoc.findCurrentNode(cursor)
+        ).to.eventually.be.an('object').with.property('defines').eql(['Materials/x']);
+    });
+
+    test("findCurrentNode; sub-block defining GenericConstantMaterial", function () {
+        doc.text = "[Materials]\n[./abc]\ntype=GenericConstantMaterial\nprop_names='x y'\n[../]\n[]";
+        let cursor = { row: 1, column: 5 };
+        return expect(mdoc.findCurrentNode(cursor)
+        ).to.eventually.be.an('object').with.property('defines').eql(['Materials/x', 'Materials/y']);
     });
 
     test("findCurrentNode; type", function () {
@@ -136,6 +151,17 @@ suite("MooseDoc Tests", function () {
         // });
         return expect(mdoc.findCurrentNode(cursor)
         ).to.eventually.be.an('object').with.property('path').eql(['Kernels', 'akernel', 'AllenCahn']);
+    });
+
+    test("findCurrentNode; type, where sub-block shares name of a type", function () {
+        doc.text = `
+[Kernels]
+    [./AllenCahn]
+        type = AllenCahn
+        `;
+        let cursor = { row: 3, column: 17 };
+        return expect(mdoc.findCurrentNode(cursor)
+        ).to.eventually.be.an('object').with.property('path').eql(['Kernels', 'AllenCahn', 'AllenCahn']);
     });
 
     test("findCurrentNode; parameter", function () {
@@ -161,7 +187,7 @@ suite("MooseDoc Tests", function () {
     test("findCurrentNode; value which is reference to variable", function () {
         doc.text = `
 [Variables]
-    [./xy_z]
+    [./xy_z] # a variable
     [../]
 []
 [Kernels]
@@ -177,12 +203,15 @@ suite("MooseDoc Tests", function () {
             {
                 path: ['Kernels', 'akernel', 'variable', 'xy_z'],
                 range: [19, 23],
-                defines: null, referenceTo: ['Variables', 'xy_z'],
+                defines: null,
                 node: {
                     name: "xy_z",
-                    defPath: ['Variables', 'xy_z'],
-                    defPosition: { row: 2, column: 6 },
-                    description: "Referenced Variable"
+                    description: "Referenced Variable",
+                    definition: {
+                        key: 'Variables/xy_z',
+                        description: 'a variable',
+                        position: { row: 2, column: 6 }
+                    }
                 }
             });
     });
@@ -209,12 +238,14 @@ suite("MooseDoc Tests", function () {
                 node: {
                     name: "fmat",
                     description: "Referenced Material",
-                    defPosition: { "row": 4, "column": 17 },
-                    defPath: ['Materials', 'mat2'],
-                    defType: "DerivativeParsedMaterial"
+                    definition: {
+                        description: "",
+                        position: { "row": 4, "column": 17 },
+                        key: 'Materials/fmat',
+                        type: "DerivativeParsedMaterial"
+                    }
                 },
                 path: ['Kernels', 'akernel', 'f_name', 'fmat'],
-                referenceTo: ['Materials', 'fmat'],
                 range: [17, 21], defines: null
             });
     });
@@ -241,12 +272,14 @@ suite("MooseDoc Tests", function () {
                 node: {
                     name: "bmat",
                     description: "Referenced Material",
-                    defPosition: { "row": 4, "column": 27 },
-                    defPath: ['Materials', 'mat2'],
-                    defType: "GenericConstantMaterial"
+                    definition: {
+                        description: "",
+                        position: { "row": 4, "column": 27 },
+                        key: 'Materials/bmat',
+                        type: "GenericConstantMaterial"
+                    }
                 },
                 path: ['Kernels', 'akernel', 'f_name', 'bmat'],
-                referenceTo: ['Materials', 'bmat'],
                 range: [17, 21], defines: null
             });
     });
@@ -272,12 +305,14 @@ suite("MooseDoc Tests", function () {
                 node: {
                     name: "F",
                     description: "Referenced Material",
-                    defPosition: { "row": 2, "column": 6 },
-                    defPath: ['Materials', 'mat2'],
-                    defType: "DerivativeParsedMaterial"
+                    definition: {
+                        description: "",
+                        position: { "row": 2, "column": 6 },
+                        key: 'Materials/F',
+                        type: "DerivativeParsedMaterial"
+                    }
                 },
                 path: ['Kernels', 'akernel', 'f_name', 'F'],
-                referenceTo: ['Materials', 'F'],
                 range: [17, 18], defines: null
             });
     });
@@ -300,10 +335,10 @@ suite("MooseDoc Tests", function () {
         });
     });
 
-    test("Completion; type value", function () {
+    test("Completion; type value, where sub-block shares a name with a type", function () {
         doc.text = `
 [Kernels]
-    [./akernel]
+    [./TimeDerivative]
         type = 
     [../]
 []
@@ -313,16 +348,7 @@ suite("MooseDoc Tests", function () {
         //     console.log(value);
         // });
         return expect(mdoc.findCompletions(cursor)
-        ).to.eventually.be.an('array').that.has.length(116).and.deep.include({
-            kind: "type",
-            insertText: {
-                type: "text",
-                value: "ACBarrierFunction"
-            },
-            displayText: "ACBarrierFunction",
-            description: "Allen Cahn kernel used when 'mu' is a function of variables",
-            replacementPrefix: ""
-        });
+        ).to.eventually.be.an('array').that.has.length(116);
     });
 
     test("Completion; parameter name", function () {
@@ -889,8 +915,11 @@ suite("MooseDoc Tests", function () {
             errors: [],
             refs: {
                 "Variables/a": {
-                    "instPos": { row: 2, column: 6 },
-                    "instSubBlock": "a",
+                    "definition": {
+                        "description": "",
+                        "key": "Variables/a",
+                        "position": { row: 2, column: 6 }
+                    },
                     "refs": [{ row: 8, column: 8 }]
                 }
             }
@@ -942,8 +971,11 @@ suite("MooseDoc Tests", function () {
             errors: [],
             refs: {
                 "Materials/b": {
-                    "instPos": { row: 4, column: 17 },
-                    "instSubBlock": "a",
+                    "definition": {
+                        "description": "",
+                        "key": "Materials/b",
+                        "position": { row: 4, column: 17 }
+                    },
                     "refs": []
                 }
             }
@@ -992,38 +1024,59 @@ suite("MooseDoc Tests", function () {
         // }).catch(reason => console.log(reason));
         return expect(mdoc.assessDocument(true)).to.eventually.be.an('object').with.property('refs').eql({
             "Variables/a": {
-                "instPos": { row: 2, column: 6 },
-                "instSubBlock": "a",
+                "definition": {
+                    "description": "",
+                    "key": "Variables/a",
+                    "position": { row: 2, column: 6 }
+                },
                 "refs": [{ row: 32, column: 8 }]
             },
             "AuxVariables/g": {
-                "instPos": { row: 6, column: 6 },
-                "instSubBlock": "g",
+                "definition": {
+                    "description": "",
+                    "key": "AuxVariables/g",
+                    "position": { row: 6, column: 6 }
+                },
                 "refs": []
             },
             "Functions/f": {
-                "instPos": { row: 10, column: 6 },
-                "instSubBlock": "f",
+                "definition": {
+                    "description": "",
+                    "key": "Functions/f",
+                    "position": { row: 10, column: 6 }
+                },
                 "refs": []
             },
             "Materials/b": {
-                "instPos": { row: 16, column: 17 },
-                "instSubBlock": "c",
+                "definition": {
+                    "description": "",
+                    "key": "Materials/b",
+                    "position": { row: 16, column: 17 }
+                },
                 "refs": [{ row: 33, column: 8 }]
             },
             "Materials/F": {
-                "instPos": { row: 19, column: 6 },
-                "instSubBlock": "d",
+                "definition": {
+                    "description": "",
+                    "key": "Materials/F",
+                    "position": { row: 19, column: 6 }
+                },
                 "refs": []
             },
             "Materials/x": {
-                "instPos": { row: 25, column: 22 },
-                "instSubBlock": "e",
+                "definition": {
+                    "description": "",
+                    "key": "Materials/x",
+                    "position": { row: 25, column: 22 }
+                },
                 "refs": []
             },
             "Materials/y": {
-                "instPos": { row: 25, column: 24 },
-                "instSubBlock": "e",
+                "definition": {
+                    "description": "",
+                    "key": "Materials/y",
+                    "position": { row: 25, column: 24 }
+                },
                 "refs": []
             }
         });
@@ -1050,18 +1103,27 @@ suite("MooseDoc Tests", function () {
         // }).catch(reason => console.log(reason));
         return expect(mdoc.assessDocument(true)).to.eventually.be.an('object').with.property('refs').eql({
             "Materials/e": {
-                "instPos": { row: 2, column: 6 },
-                "instSubBlock": "c",
+                "definition": {
+                    "description": "",
+                    "key": "Materials/e",
+                    "position": { row: 2, column: 6 }
+                },
                 "refs": []
             },
             "Materials/f": {
-                "instPos": { row: 6, column: 6 },
-                "instSubBlock": "d",
+                "definition": {
+                    "description": "",
+                    "key": "Materials/f",
+                    "position": { row: 6, column: 6 }
+                },
                 "refs": [{ row: 12, column: 8 }]
             },
             "Materials/g": {
-                "instPos": { row: 6, column: 6 },
-                "instSubBlock": "d",
+                "definition": {
+                    "description": "",
+                    "key": "Materials/g",
+                    "position": { row: 6, column: 6 }
+                },
                 "refs": []
             }
         });

@@ -81,7 +81,7 @@ suite("MooseSyntaxDB Tests", function () {
         return expect(db.matchSyntaxNode(['wrong'])).to.eventually.be.eql(null);
     });
 
-    test("Match Syntax Node (success)", function () {
+    test("Match Syntax Node (success) check description", function () {
         db.setPaths(yamlPath, jsonPath);
         // db.rebuildAppData();
         // db.matchSyntaxNode(['Kernels','AllenCahn']).then(value => {
@@ -89,8 +89,21 @@ suite("MooseSyntaxDB Tests", function () {
         // });
         return expect(db.matchSyntaxNode(['Kernels', 'AllenCahn'])
         ).to.eventually.have.property('node').which.has.keys(
-            ['name', 'description', 'parameters', 'subblocks', 'file']
+            ['name', 'description', 'parameters', 'subblocks', 'definition']
             ).with.property('description').eql("Allen-Cahn Kernel that uses a DerivativeMaterial Free Energy");
+    });
+
+    test("Match Syntax Node (success) check definition", function () {
+        db.setPaths(yamlPath, jsonPath);
+        return expect(db.matchSyntaxNode(['Kernels', 'AllenCahn'])
+        ).to.eventually.have.property('node').which.has.keys(
+            ['name', 'description', 'parameters', 'subblocks', 'definition']
+        ).with.property('definition').eql({
+            file: "/Users/cjs14/GitHub/moose/modules/phase_field/src/kernels/AllenCahn.C",
+            key: "Kernels/AllenCahn",
+            position: { row: 0, column: 0 },
+            description: "C++ Object"
+            });
     });
 
     test("fetch Parameter List (failure)", function () {
