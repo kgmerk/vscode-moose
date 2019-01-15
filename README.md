@@ -187,6 +187,12 @@ Fixed some bugs:
 - added overriding of materials properties via identifying `<defines: >` in inline Materials sub-block comment
 - performance improvements for building outline / diagnostics
 
+### 0.10.1
+
+- improved hover markdown string format
+- fixed bug in syntax highlighting of types
+- fixed bug if type parameter overrides subblock name
+
 ## Acknowledgements
 
 Thanks to Daniel Schwen for supplying code for [MOOSE autocompletion in ATOM.io](https://github.com/dschwen/autocomplete-moose)
