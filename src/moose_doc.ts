@@ -406,7 +406,7 @@ export class MooseDoc {
         } else {
             path = configPath;
         }
-        return path
+        return path;
     }
 
     /** find node for a cursor position, and the path to it
@@ -1179,7 +1179,7 @@ export class MooseDoc {
                     };
                 }
             }
-            for (let { name, block, position } of await this.getAllMaterialDefinitions()) {
+            for (let { name, position } of await this.getAllMaterialDefinitions()) {
                 if (name !== null) {
                     let key = ["Materials", name].join("/");
                     if (key in refsDict) {
