@@ -35,6 +35,11 @@ export interface Document {
      * get text for a single row/line
      */
     getTextForRow(row: number): string;
+    /**
+     * iterate over all lines of the document
+     */
+    iterLines(initRow: number): IterableIterator<{ row: number, line: string }>; 
+    // TODO add optional start/end rows to iterLines
 }
 
 export interface Completion {
@@ -100,6 +105,18 @@ export interface ValueNode {
     defType?: string; // the type of the variable (used for materials)
 }
 
+export interface SubBlock {
+    mainBlock: string;
+    name: string | null;
+    properties: {
+        [name: string]: {
+            row: number, line: string, value: string
+        }
+    };
+    position: Position;
+    comment: string | undefined;
+}
+
 function __guard__(value: RegExpMatchArray | null,
     transform: (regarray: RegExpMatchArray) => string) {
     return typeof value !== 'undefined' && value !== null ? transform(value) : undefined;
@@ -116,15 +133,20 @@ let rgx = {
     valueCompletion: /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/,
     stdVector: /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/,
 
-    blockOpenTop: /^\s*\[([^.\/][^\/]*)\]/,
+    // if match, returns [line, block name, all characters after block, comment | undefined]
+    blockOpenTop: /^\s*\[([^.\/][^\/]*)\][\s]*(#(.*)|.*)/,
     blockCloseTop: /^\s*\[\]/,
-    blockOpenOneLevel: /^\s*\[\.\/([^.\/]+)\]/,
-    blockOpenOneLevelComment: /^\s*\[\.\/([^.\/]+)\][\s]*(#.*|$)/,
+
+    // if match, returns [line, block name, all characters after block, comment | undefined]
+    blockOpenOneLevel: /^\s*\[\.\/([^.\/]+)\][\s]*(#(.*)|.*)/,
     blockCloseOneLevel: /^\s*\[\.\.\/\]/,
 
     paramLine: /^\s*([^\s#=\]]+)\s*=.*$/, // /^\s*([_a-zA-Z0-9]+)\s*=.*$/;
+
     // if match, returns [line w/out comment, name, value, unquoted value | undefined]
     paramValueLine: /^\s*([^\s#=\]]+)\s*=\s*('(\s*[^\s'#=\]]*[^'#=\]]*)'|[^\s#=\]]*)/, // /^\s*([_a-zA-Z0-9]+)\s*=\s*[\'\"]*([^#\'\"]+)/;
+
+    materialDefines: /<defines:[\s]*(\s*[^\s>#=\]]*[^>#=\]]*)[\s]*>/,
 };
 
 /**
@@ -233,18 +255,36 @@ export class MooseDoc {
 
     }
 
+    private async getMaterialDefinitions(subBlock: SubBlock) {
+        if (subBlock.comment) {
+            let cMatch: RegExpExecArray | null
+            if (cMatch = rgx.materialDefines.exec(subBlock.comment)) {
+                let type: undefined | string = undefined;
+                if ("type" in subBlock.properties) {
+                    type = subBlock.properties["type"].value;
+                }
+                let defNames = { names: [] as string[], property: undefined, type: type };
+                for (let defName of cMatch[1].split(/\s+/).filter(Boolean)) {
+                    defNames.names.push(defName);
+                }
+                return defNames;
+            }
+        }
+        return await this.syntaxdb.getMaterialDefinitions(subBlock.properties);
+    }
+
     //** find all material definitions  */
     private async getAllMaterialDefinitions() {
         let allDefs = [];
 
         for (let subBlock of this.yieldSubBlocks(["Materials"], true)) {
             if (subBlock.name === null) { continue;}
-            let defs = await this.syntaxdb.getMaterialDefinitions(subBlock.properties);
+            let defs = await this.getMaterialDefinitions(subBlock);
             if (defs === null) { continue; }
             for (let defName of defs.names) {
 
                 let position: Position;
-                if (defs.property in subBlock.properties) {
+                if (defs.property && defs.property in subBlock.properties) {
                     let prop = subBlock.properties[defs.property];
                     position = {
                         row: prop.row,
@@ -278,12 +318,12 @@ export class MooseDoc {
 
             for (let subBlock of this.yieldSubBlocks(["Materials"], true, null, startRow)) {
                 if (subBlock.name === null) { continue; }
-                let defs = await this.syntaxdb.getMaterialDefinitions(subBlock.properties);
+                let defs = await this.getMaterialDefinitions(subBlock);
                 if (defs === null) { continue; }
                 if (defs.names.indexOf(matName) >= 0) {
 
                     let position: Position;
-                    if (defs.property in subBlock.properties) {
+                    if (defs.property && defs.property in subBlock.properties) {
                         let prop = subBlock.properties[defs.property];
                         position = {
                             row: prop.row,
@@ -410,7 +450,7 @@ export class MooseDoc {
                 
                 for (let subBlock of this.yieldSubBlocks(["Materials"], true)) { 
                     if (subBlock.name !== configPath[1]) { continue; }
-                    let defs = await this.syntaxdb.getMaterialDefinitions(subBlock.properties);
+                    let defs = await this.getMaterialDefinitions(subBlock);
                     if (defs === null) { break; }
                     for (let matName of defs.names) {
                         blockDefs.push(["Materials", matName]);
@@ -717,33 +757,13 @@ export class MooseDoc {
      */
     private * yieldSubBlocks(blockNames: string[],
         gatherParameters: Boolean = false, paramFilter: string[] | null = null, startRow: number = 0) {
-        let row = startRow;
         let level = 0;
         let regexMatch: RegExpExecArray | null;
         let mainBlockName: string | null = null;
-        let subBlock: {
-            mainBlock: string
-            name: string | null,
-            properties: { [index: string]: { row: number, line: string, value: string } },
-            position: Position
-        } = { mainBlock: '', name: '', properties: {}, position: { row: 0, column: 0 } };
-        let mainBlock: {
-            mainBlock: string
-            name: string | null,
-            properties: { [index: string]: { row: number, line: string, value: string } },
-            position: Position
-        } = { mainBlock: '', name: null, properties: {}, position: { row: 0, column: 0 } };
+        let subBlock: SubBlock = { mainBlock: '', name: '', properties: {}, position: { row: 0, column: 0 }, comment: undefined };
+        let mainBlock: SubBlock = { mainBlock: '', name: null, properties: {}, position: { row: 0, column: 0 }, comment: undefined };
 
-        let nlines = this.getDoc().getLineCount();
-
-        // parse contents of subBlock block
-        while (true) {
-
-            if (row >= nlines) {
-                break;
-            }
-
-            let line = this.getDoc().getTextForRow(row);
+        for (let { line, row } of this.getDoc().iterLines(startRow)) {
 
             // scan through document, until a required block is open
             if (regexMatch = rgx.blockOpenTop.exec(line)) {
@@ -757,7 +777,8 @@ export class MooseDoc {
                         mainBlock: mainBlockName,
                         name: null,
                         properties: {},
-                        position: { row: row, column: line.indexOf('[') }
+                        position: { row: row, column: line.indexOf('[') },
+                        comment: regexMatch[3]
                     };
                 }
             } else if (rgx.blockCloseTop.test(line)) {
@@ -770,19 +791,19 @@ export class MooseDoc {
             }
             if (mainBlockName === null) {
                 // if we are not in a required block, then continue to next row
-                row++;
                 continue;
             }
 
             if (rgx.blockOpenOneLevel.test(line)) {
                 if (level === 0) {
-                    let blockopen = rgx.blockOpenOneLevel.exec(line);
-                    if (blockopen !== null) {
+                    let blockOpen = rgx.blockOpenOneLevel.exec(line);
+                    if (blockOpen !== null) {
                         subBlock = {
                             mainBlock: mainBlockName,
-                            name: blockopen[1],
+                            name: blockOpen[1],
                             properties: {},
-                            position: { row: row, column: line.indexOf('[') + 2 }
+                            position: { row: row, column: line.indexOf('[') + 2 },
+                            comment: blockOpen[3]
                         };
                     }
                 }
@@ -818,7 +839,6 @@ export class MooseDoc {
                 }
             }
 
-            row++;
         }
 
     }
@@ -831,15 +851,17 @@ export class MooseDoc {
     private computeSubBlockNameCompletion(blockNames: string[], propertyNames: string[]) {
         let completions: Completion[] = [];
         for (let block of Array.from(blockNames)) {
-            for (let { name, properties } of this.yieldSubBlocks([block], true, propertyNames)) {
+            for (let { name, properties, comment } of this.yieldSubBlocks([block], true, propertyNames)) {
                 if (name === null) { continue; }
                 let doc: string[] = [];
+                if (!!comment && comment.length > 0) {
+                    doc.push(comment + "\n\n");
+                }
                 for (let propertyName of Array.from(propertyNames)) {
                     if (propertyName in properties) {
                         doc.push(properties[propertyName].value);
                     }
                 }
-
                 completions.push({
                     kind: "block",
                     insertText: {
@@ -1107,6 +1129,7 @@ export class MooseDoc {
         let refsDict: VariableRefs | null = null;
 
         let line: string = "";
+        let row: number = 0;
         let currLevel = 0;
         let indentLevel = 0;
         let emptyLines: number[] = [];
@@ -1158,9 +1181,7 @@ export class MooseDoc {
         }
 
         // step through document
-        for (var row = 0; row < this.getDoc().getLineCount(); row++) {
-
-            line = this.getDoc().getTextForRow(row);
+        for ({ line, row } of this.getDoc().iterLines(0)) {
 
             emptyLines = this.detectBlankLines(emptyLines, row, syntaxErrors, line);
 
@@ -1677,8 +1698,9 @@ export class MooseDoc {
                                 }
                                 if (instanceInBlock !== null) {
                                     refsDict[[instanceInBlock, pvalue].join("/")]["refs"].push(param.start);
-                                } else if (vBlocks.indexOf("Functions") < 0) {
+                                } else if (vBlocks.indexOf("Functions") >= 0) {
                                     // FunctionName variables can be a string of the actual function, e.g. func = 'x+y'
+                                } else {
                                     let error: SyntaxError = {
                                         type: "refcheck",
                                         msg: pvalue + " references a variable that was not found in the document",
@@ -1692,6 +1714,8 @@ export class MooseDoc {
                                 if (node.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
                                     if ("Materials/" + pvalue in refsDict) {
                                         refsDict["Materials/" + pvalue]["refs"].push(param.start);
+                                    } else if (!isNaN(parseInt(pvalue))) {
+                                        // MaterialPropertyName may be able to be a number e.g. see kks_mechanics_VTS.i    
                                     } else {
                                         let error: SyntaxError = {
                                             type: "matcheck",

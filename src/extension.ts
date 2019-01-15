@@ -29,8 +29,17 @@ export class VSDoc implements Document {
         return this.vsdoc.getText(new vscode.Range(pos1, pos2));
     }
     getTextForRow(row: number) {
-        // TODO this method seems quite slow
+        // Note lineAt method seems quite slow
         return this.vsdoc.lineAt(row).text;
+    }
+    *iterLines(initRow: number = 0) {
+        let row = 0;
+        for (let line of this.vsdoc.getText().split('\n')) {
+            if (row >= initRow) {
+                yield { row: row, line: line };
+            }
+            row++;
+        }
     }
 }
 

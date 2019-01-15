@@ -60,6 +60,15 @@ class TestDoc implements moosedoc.Document {
     getTextForRow(row: number) {
         return this.text.split('\n')[row];
     }
+    *iterLines(initRow: number = 0) {
+        let row = 0;
+        for (let line of this.text.split('\n')) {
+            if (row >= initRow) {
+                yield { row: row, line: line };
+            }
+            row++;
+       }
+    }
 
 }
 
@@ -523,7 +532,7 @@ suite("MooseDoc Tests", function () {
                 name: "Kernels",
                 description: "",
                 level: 1,
-                start: { row: 6, column: 0 }, end: { row: 14, column: 0 },
+                start: { row: 6, column: 0 }, end: { row: 13, column: 0 },
                 children: [{
                     name: "akernel",
                     description: "Allen Cahn kernel used when 'mu' is a function of variables",
@@ -591,12 +600,12 @@ suite("MooseDoc Tests", function () {
             {
                 type: "format",
                 msg: "multiple blank lines",
-                start: { row: 11, column: 0 }, end: { row: 13, column: 0 },
+                start: { row: 11, column: 0 }, end: { row: 12, column: 0 },
                 correction: { replace: "" }
             },
             {
                 type: "closure",
-                start: { row: 14, column: 0 }, end: { row: 14, column: 8 },
+                start: { row: 13, column: 0 }, end: { row: 13, column: 8 },
                 msg: "final block(s) unclosed",
                 correction: { insertionAfter: "[]\n" }
             }
@@ -1015,6 +1024,44 @@ suite("MooseDoc Tests", function () {
             "Materials/y": {
                 "instPos": { row: 25, column: 24 },
                 "instSubBlock": "e",
+                "refs": []
+            }
+        });
+    });
+
+    test("References (Materials with overriden declared properties )", function () {
+        doc.text = `
+[Materials]
+    [./c]  # <defines: e>
+        type = DerivativeParsedMaterial
+        function = 1
+    [../]
+    [./d] # <defines: f g>
+    [../]
+[]
+[Kernels]
+    [./ACInterface]
+        type = ACInterface
+        kappa_name = f
+    [../]
+[]`;
+        // mdoc.assessDocument(true).then(value => {
+        //     console.log(value);
+        // }).catch(reason => console.log(reason));
+        return expect(mdoc.assessDocument(true)).to.eventually.be.an('object').with.property('refs').eql({
+            "Materials/e": {
+                "instPos": { row: 2, column: 6 },
+                "instSubBlock": "c",
+                "refs": []
+            },
+            "Materials/f": {
+                "instPos": { row: 6, column: 6 },
+                "instSubBlock": "d",
+                "refs": [{ row: 12, column: 8 }]
+            },
+            "Materials/g": {
+                "instPos": { row: 6, column: 6 },
+                "instSubBlock": "d",
                 "refs": []
             }
         });

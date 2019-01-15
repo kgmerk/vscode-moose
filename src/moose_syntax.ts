@@ -654,7 +654,7 @@ export class MooseSyntaxDB {
      */
     public async getMaterialDefinitions(paramsDict: { [name: string]: {value: string} }) {
 
-        let defNames: {names: string[], property: string, type: string} | null = null;
+        let defNames: {names: string[], property?: string, type: string} | null = null;
 
         let matType: string | null = null;
         if ("type" in paramsDict) {
@@ -689,7 +689,7 @@ export class MooseSyntaxDB {
                     }
                     return {
                         names: value.split(/\s+/).filter(Boolean), // filter removes zero-length strings
-                        property: potName, type: matType
+                        property: potName as string | undefined, type: matType as string | undefined
                     }; 
                 }
             }         
