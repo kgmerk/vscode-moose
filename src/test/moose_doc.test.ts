@@ -1128,4 +1128,46 @@ suite("MooseDoc Tests", function () {
             }
         });
     });
+
+    test("References (Materials sub-blocks containing material_property_names )", function () {
+        doc.text = `
+[Materials]
+    [./c]
+        type = DerivativeParsedMaterial
+        f_name = a_b
+        function = 1
+    [../]
+    [./d]
+        type = DerivativeParsedMaterial
+        f_name = b
+        material_property_names = 'a_b a_b(x,y) da_b:=D[a_b,c] d3a_b:=D[a_b(x,y),x,x,y]'
+    [../]
+[]`;
+        // mdoc.assessDocument(true).then(value => {
+        //     console.log(value);
+        // }).catch(reason => console.log(reason));
+        return expect(mdoc.assessDocument(true)).to.eventually.be.an('object').with.property('refs').eql({
+            "Materials/a_b": {
+                "definition": {
+                    "description": "",
+                    "key": "Materials/a_b",
+                    "position": { row: 4, column: 17 }
+                },
+                "refs": [
+                    { "row": 10, "column": 8 },
+                    { "row": 10, "column": 8 },
+                    { "row": 10, "column": 8 },
+                    { "row": 10, "column": 8 }
+                ]
+            },
+            "Materials/b": {
+                "definition": {
+                    "description": "",
+                    "key": "Materials/b",
+                    "position": { row: 9, column: 17 }
+                },
+                "refs": []
+            }
+        });
+    });
 });

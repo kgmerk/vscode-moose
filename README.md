@@ -193,6 +193,12 @@ Fixed some bugs:
 - fixed bug in syntax highlighting of types
 - fixed bug if type parameter overrides subblock name
 
+### 0.10.2
+
+- handle `material_property_names` parameter in Materials sub-block;
+  - provide autocompletion / hover of material names
+  - add referenced material names to "Find References" result
+
 ## Acknowledgements
 
 Thanks to Daniel Schwen for supplying code for [MOOSE autocompletion in ATOM.io](https://github.com/dschwen/autocomplete-moose)

@@ -135,9 +135,17 @@ let rgx = {
     paramLine: /^\s*([^\s#=\]]+)\s*=.*$/, // /^\s*([_a-zA-Z0-9]+)\s*=.*$/;
 
     // if match, returns [line w/out comment, name, value, unquoted value | undefined]
-    paramValueLine: /^\s*([^\s#=\]]+)\s*=\s*('(\s*[^\s'#=\]]*[^'#=\]]*)'|[^\s#=\]]*)/, // /^\s*([_a-zA-Z0-9]+)\s*=\s*[\'\"]*([^#\'\"]+)/;
+    // paramValueLine: /^\s*([^\s#=\]]+)\s*=\s*('(\s*[^\s'#=\]]*[^'#=\]]*)'|[^\s#=\]]*)/, 
+    paramValueLine: /^\s*([^\s#=\]]+)\s*=\s*('(\s*[^\s'#]*[^'#]*)'|[^\s#]*)/,
+    // TODO check changing regex (allowing = and ] characters ) doesn't have any unintended consequences (e.g. lines defining functions?)
+    // original regex failed for e.g. "material_property_names = 'Mconst d3Mconst:=D[Mconst(a,b),a,a,b] Mconst(a,b)'" returns "'Mconst"
 
     materialDefines: /<defines:[\s]*(\s*[^\s>#=\]]*[^>#=\]]*)[\s]*>/,
+
+    matDependance: /^([\-\_a-zA-Z0-9]+)\([\,\-\_a-zA-Z0-9]+\)$/, // e.g. F(c,phi)
+    matDerivative: /^[\-\_a-zA-Z0-9]+\:\=D\[([\-\_a-zA-Z0-9]+)\,[\,\-\_a-zA-Z0-9]+\]$/, // e.g. dF:=D[F,c]
+    matNDerivative: /^[\-\_a-zA-Z0-9]+\:\=D\[([\-\_a-zA-Z0-9]+)\([\,\-\_a-zA-Z0-9]+\)[\,\-\_a-zA-Z0-9]+\]$/, // e.g. d3x:=D[x(a,b),a,a,b]
+
 };
 
 /**
@@ -156,6 +164,7 @@ export class MooseDoc {
     private syntaxdb: moosedb.MooseSyntaxDB;
     private doc: Document | null;
     public indentLength: number;
+    public wordChars: string = "\\-\\_0-9a-zA-Z"; // defines characters allowed in a word (when resolving at a cursor position)
 
     constructor(syntaxdb: moosedb.MooseSyntaxDB, doc: Document | null = null, indentLength: number = 4) {
         this.doc = doc;
@@ -246,6 +255,7 @@ export class MooseDoc {
 
     }
 
+    /** find material names defined within a given sub-block of Materials */
     private async getMaterialDefinitions(subBlock: SubBlock) {
         if (subBlock.comment) {
             let cMatch: RegExpExecArray | null;
@@ -264,7 +274,7 @@ export class MooseDoc {
         return await this.syntaxdb.getMaterialDefinitions(subBlock.properties);
     }
 
-    //** find all material definitions  */
+    /** find all material names defined in the Materials block  */
     private async getAllMaterialDefinitions() {
         let allDefs = [];
 
@@ -299,56 +309,71 @@ export class MooseDoc {
 
     /** find a material definition for a referencing parameter
      * 
-     * @param matName the name of the material
+     * @param param the parameter being set
+     * @param word the word identified for the cursor position
+     * @param configPath the path to the parameter
      * @param startRow the row at which to start searching for the Materials block
      */
-    private async getMaterialDefinition(param: moosedb.ParamNode, matName: string, startRow: number = 0) {
+    private async getMaterialDefinition(param: moosedb.ParamNode, word: string, configPath: string[], startRow: number = 0) {
         let node: ValueNode | null = null;
         let match = rgx.stdVector.exec(param.cpp_type);
+
+        let isMaterial = false;
         if (param.cpp_type === "MaterialPropertyName" || (match !== null && match[2] === "MaterialPropertyName")) {
+            isMaterial = true;
+        } else if (configPath.length === 2 && configPath[0] === "Materials" && param.name === 'material_property_names') {
+            // material_property_names is a parameter of materials derived from DerivativeParsedMaterial
+            // see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/
+            isMaterial = true;
+            // can be F, F[c,phi], d3x:=D[x(a,b),a,a,b] or dF:=D[F,c]
+        }
 
-            for (let subBlock of this.yieldSubBlocks(["Materials"], true, null, startRow)) {
-                if (subBlock.name === null) { continue; }
-                let defs = await this.getMaterialDefinitions(subBlock);
-                if (defs === null) { continue; }
-                if (defs.names.indexOf(matName) >= 0) {
+        if (!isMaterial) {
+            return node;
+        }
 
-                    let position: Position;
-                    if (defs.property && defs.property in subBlock.properties) {
-                        let prop = subBlock.properties[defs.property];
-                        position = {
-                            row: prop.row,
-                            column: prop.line.search(RegExp("[=\\s\\\'\\\"]" + matName + "([\\s\\\'\\\"]|$)")) + 1
-                        };
-                    } else {
-                        position = subBlock.position;
-                    }
+        for (let subBlock of this.yieldSubBlocks(["Materials"], true, null, startRow)) {
+            if (subBlock.name === null) { continue; }
+            let defs = await this.getMaterialDefinitions(subBlock);
+            if (defs === null) { continue; }
+            if (defs.names.indexOf(word) >= 0) {
 
-                    node = {
-                        name: matName,
-                        description: "Referenced Material",
-                        definition: {
-                            key: ["Materials", matName].join("/"),
-                            position: position,
-                            type: defs.type,
-                            description: ""
-                        }
+                let position: Position;
+                if (defs.property && defs.property in subBlock.properties) {
+                    let prop = subBlock.properties[defs.property];
+                    position = {
+                        row: prop.row,
+                        column: prop.line.search(RegExp("[=\\s\\\'\\\"]" + word + "([\\s\\\'\\\"]|$)")) + 1
                     };
-                    return node;
+                } else {
+                    position = subBlock.position;
                 }
+
+                node = {
+                    name: word,
+                    description: "Referenced Material",
+                    definition: {
+                        key: ["Materials", word].join("/"),
+                        position: position,
+                        type: defs.type,
+                        description: ""
+                    }
+                };
+                return node;
             }
         }
+
         return node;
     }
 
     /** find the node and path of the variable which the value is referencing
      * 
-     * @param value the value to search for
      * @param paramName the parameter which it represents
+     * @param word the word identified from the cursor position
      * @param valuePath the path to the value
      * @param explicitType the type of the sub-block
      */
-    private async findValueReference(value: string, paramName: string, valuePath: string[], explicitType: string | null = null) {
+    private async findValueReference(paramName: string, word: string, valuePath: string[], explicitType: string | null = null) {
 
         let node: ValueNode | null = null;
 
@@ -365,7 +390,7 @@ export class MooseDoc {
                 if (blockNames) {
                     for (let blockName of blockNames) {
                         for (let { name, position, comment } of this.yieldSubBlocks([blockName])) {
-                            if (name === value) {
+                            if (name === word) {
                                 // match = await this.syntaxdb.matchSyntaxNode([blockName, name]);
                                 node = {
                                     name: name,
@@ -389,7 +414,7 @@ export class MooseDoc {
                     //     // need to convert relative paths to absolute path
                 } else {
                     // search for reference definition in the Materials block
-                    node = await this.getMaterialDefinition(param, value);
+                    node = await this.getMaterialDefinition(param, word, valuePath);
                 }
 
                 return node;
@@ -412,9 +437,8 @@ export class MooseDoc {
     /** find node for a cursor position, and the path to it
     * 
     * @param pos position of cursor
-    * @param wordChars defines characters allowed in a word
     */
-    public async findCurrentNode(pos: Position, wordChars: string = "-_0-9a-zA-Z") {
+    public async findCurrentNode(pos: Position) {
 
         let matchBlock: null | moosedb.NodeMatch = null;
         let node: moosedb.SyntaxNode | moosedb.ParamNode | ValueNode | null = null;
@@ -422,7 +446,7 @@ export class MooseDoc {
         let defines: string[] | null = null;
 
         let line = this.getDoc().getTextForRow(pos.row);
-        let wordMatch = MooseDoc.getWordAt(line, pos.column, wordChars);
+        let wordMatch = MooseDoc.getWordAt(line, pos.column, this.wordChars);
         if (wordMatch === null) {
             return null;
         }
@@ -470,7 +494,7 @@ export class MooseDoc {
                 }
                 if (blockDefs.length > 0) { defines = blockDefs; }
             }
-        } else if (/\s*type\s*=\s*/.test(line.slice(0, start - 1))) {         
+        } else if (/\s*type\s*=\s*/.test(line.slice(0, start - 1))) {
             matchBlock = await this.syntaxdb.matchSyntaxNode(
                 this.replaceSubBlockNode(configPath)); // the type parameter value supercedes the subblock name
             if (matchBlock !== null) {
@@ -482,7 +506,7 @@ export class MooseDoc {
                 return null;
             }
             node = matchBlock.node;
-        } else if (/\s*=.*/.test(line.slice(end + 1))) {
+        } else if (/\s*=.*/.test(line.slice(end + 1)) && !(/\=/.test(line.slice(0, start - 1)))) {
             // parameter name
             let params = await this.syntaxdb.fetchParameterList(configPath, explicitType);
             for (let param of params) {
@@ -496,8 +520,9 @@ export class MooseDoc {
             }
         } else if (!!(rmatch = rgx.paramLine.exec(line))) { // /^\s*([^\s#=\]]+)\s*=.*/
             // value of parameter
+            // TODO handle array value continuing over multiple lines
             let paramName = rmatch[1];
-            let vnode = await this.findValueReference(word, paramName, configPath, explicitType);
+            let vnode = await this.findValueReference(paramName, word, configPath, explicitType);
             if (vnode) {
                 node = vnode;
                 configPath.push(paramName, word);
@@ -982,8 +1007,20 @@ export class MooseDoc {
         } else if (hasType('FileName') || hasType('MeshFileName')) {
             completions = this.computeFileNameCompletion(['*.e']);
         } else if (hasType('MaterialPropertyName')) {
-            // TODO DerivativeParsedMaterial blocks also has a parameter material_property_names 
-            // which can contain material name references in different ways (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
+            for (let def of await this.getAllMaterialDefinitions()) {
+                completions.push({
+                    kind: "value",
+                    displayText: def.name,
+                    description: ["Materials", def.block, def.name].join("/") + " (" + def.type + ")",
+                    insertText: {
+                        type: "text",
+                        value: def.name
+                    }
+                });
+            }
+        } else if (configPath.length === 2 && configPath[0] === "Materials" && param.name === 'material_property_names') {
+            // material_property_names is a parameter of materials derived from DerivativeParsedMaterial
+            // (see https://mooseframework.inl.gov/old/wiki/PhysicsModules/PhaseField/DevelopingModels/FunctionMaterials/)
             for (let def of await this.getAllMaterialDefinitions()) {
                 completions.push({
                     kind: "value",
@@ -1541,72 +1578,8 @@ export class MooseDoc {
             }
         }
 
-        // check if active / inactive parameters are present, and derive inactive children
-        if ("active" in paramDict && "inactive" in paramDict) {
-            // TODO does active override inactive or visa-versa, or are they not both allowed
-            let error: SyntaxError = {
-                type: "duplication",
-                start: block.start,
-                end: {
-                    row: block.start.row,
-                    column: block.start.column + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)
-                },
-                msg: 'active and inactive parameters are not allowed in the same block'
-            };
-            syntaxErrors.push(error);
-        } else if ("active" in paramDict) {
-            // only use first instance
-            let param = paramDict["active"][0];
-            if (param.value) {
-                let activeBlocks = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings
-                // check the specified blocks are present
-                for (let activeBlock of activeBlocks) {
-                    if (!(activeBlock in childDict)) {
-                        let error: SyntaxError = {
-                            type: "refcheck",
-                            start: param.start,
-                            end: param.end,
-                            msg: 'subblock specified in active parameter value not found: ' + activeBlock
-                        };
-                        syntaxErrors.push(error);
-                    }
-                }
-                // add any subblock missing from active list to inactive 
-                let inactiveChildren: string[] = [];
-                for (let name in childDict) {
-                    if (activeBlocks.indexOf(name) < 0) {
-                        inactiveChildren.push(name);
-                    }
-                }
-                block.inactive = inactiveChildren;
-            }
-        } else if ("inactive" in paramDict) {
-            // only use first instance
-            let param = paramDict["inactive"][0];
-            if (param.value) {
-                let inactiveBlocks = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings
-                // check the specified blocks are present
-                for (let inactiveBlock of inactiveBlocks) {
-                    if (!(inactiveBlock in childDict)) {
-                        let error: SyntaxError = {
-                            type: "refcheck",
-                            start: param.start,
-                            end: param.end,
-                            msg: 'subblock specified in inactive parameter value not found: ' + inactiveBlock
-                        };
-                        syntaxErrors.push(error);
-                    }
-                }
-                // add any subblock included in inactive list to inactive 
-                let inactiveChildren: string[] = [];
-                for (let name in childDict) {
-                    if (inactiveBlocks.indexOf(name) >= 0) {
-                        inactiveChildren.push(name);
-                    }
-                }
-                block.inactive = inactiveChildren;
-            }
-        }
+        // check if active or inactive parameters are present, and add list of inactive children to block
+        syntaxErrors.push(...this.findInactiveChildren(block, paramDict, childDict));
 
         // find the path of the node for the block
         let configPath = parentPath.concat([block.name]);
@@ -1622,6 +1595,8 @@ export class MooseDoc {
                 typeMatch = await this.syntaxdb.matchSyntaxNode(typedPath);
             }
         }
+
+        // check parameters of block
         if (blockMatch === null) {
             let error: SyntaxError = {
                 type: "dbcheck",
@@ -1649,7 +1624,6 @@ export class MooseDoc {
             }
 
             // add details and checks for parameters
-            // TODO issue when sub-block named the same as a type, should include a warning if this is the case
             let stringPath = (typeName !== null) ? configPath.concat([typeName]).join("/") : configPath.join("/");
             if (configPath[0] !== "GlobalParams") {
                 for (let pname in paramDict) {
@@ -1702,92 +1676,203 @@ export class MooseDoc {
                 }
             }
 
-            // update reference dict
+            // update and check references
             if (refsDict !== null) {
-                for (let pname in paramDict) {
-                    if (!(pname in nodeParamDict)) { continue; }
-                    let node = nodeParamDict[pname];
-                    let vBlocks = this.getVariableDefinitionBlocks(node);
-                    for (let param of paramDict[pname]) {
-                        if (!param.value) { continue; }
-                        // split vector values (e.g. 'a b c')
-                        for (let pvalue of param.value.split(/\s+/).filter(Boolean)) {
-                            if (vBlocks !== null) {
-                                let instanceInBlock = null;
-                                for (let vBlock of vBlocks) {
-                                    if ([vBlock, pvalue].join("/") in refsDict) {
-                                        instanceInBlock = vBlock;
-                                        break;
-                                    }
-                                }
-                                if (instanceInBlock !== null) {
-                                    refsDict[[instanceInBlock, pvalue].join("/")]["refs"].push(param.start);
-                                } else if (vBlocks.indexOf("Functions") >= 0) {
-                                    // FunctionName variables can be a string of the actual function, e.g. func = 'x+y'
-                                } else {
-                                    let error: SyntaxError = {
-                                        type: "refcheck",
-                                        msg: pvalue + " references a variable that was not found in the document",
-                                        start: param.start,
-                                        end: param.end
-                                    };
-                                    syntaxErrors.push(error);
-                                }
-                            } if (param.name === "type") { 
-                                // TODO make optional, also want to ensure that doesn't overwrite variable/material keys
-                                // let key: string;
-                                // let path: string[]
-                                // if (parentPath.length === 0) {
-                                //     key = [block.name, param.value].join("/");
-                                //     path = [block.name, "<type>", param.value];
-                                // } else {
-                                //     key = [parentPath[0], param.value].join("/");
-                                //     path = [parentPath[0], param.value];
-                                // }
-                                // if (key in refsDict) {
-                                //     refsDict[key].refs.push(param.start);
-                                // } else {
-                                //     let match = await this.syntaxdb.matchSyntaxNode(path);
-                                //     if (match && !!match.node.definition) {
-                                //         refsDict[key] = {
-                                //             definition: match.node.definition,
-                                //             refs: [param.start]
-                                //         };
-                                //     } else {
-                                //         refsDict[key] = {
-                                //             refs: [param.start]
-                                //         };
-                                //         // TODO add warning that definition not found
-                                //     }
-                                // }
+                syntaxErrors.push(...this.updateReferences(refsDict, paramDict, nodeParamDict, configPath));
+            }
+
+        }
+
+        return syntaxErrors;
+    }
+
+    /** check if active / inactive parameters are present, and add inactive children to the block */
+    private findInactiveChildren(block: OutlineBlockItem, paramDict: { [id: string]: OutlineParamItem[]; }, childDict: { [id: string]: OutlineBlockItem[]; }) {
+        let syntaxErrors: SyntaxError[] = [];
+
+        if ("active" in paramDict && "inactive" in paramDict) {
+            // TODO does active override inactive or visa-versa, or are they not both allowed
+            let error: SyntaxError = {
+                type: "duplication",
+                start: block.start,
+                end: {
+                    row: block.start.row,
+                    column: block.start.column + (block.level > 1 ? ("[./" + block.name + "]").length : ("[" + block.name + "]").length)
+                },
+                msg: 'active and inactive parameters are not allowed in the same block'
+            };
+            syntaxErrors.push(error);
+        }
+        else if ("active" in paramDict) {
+            // only use first instance
+            let param = paramDict["active"][0];
+            if (param.value) {
+                let activeBlocks = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings
+                // check the specified blocks are present
+                for (let activeBlock of activeBlocks) {
+                    if (!(activeBlock in childDict)) {
+                        let error: SyntaxError = {
+                            type: "refcheck",
+                            start: param.start,
+                            end: param.end,
+                            msg: 'subblock specified in active parameter value not found: ' + activeBlock
+                        };
+                        syntaxErrors.push(error);
+                    }
+                }
+                // add any subblock missing from active list to inactive 
+                let inactiveChildren: string[] = [];
+                for (let name in childDict) {
+                    if (activeBlocks.indexOf(name) < 0) {
+                        inactiveChildren.push(name);
+                    }
+                }
+                block.inactive = inactiveChildren;
+            }
+        }
+        else if ("inactive" in paramDict) {
+            // only use first instance
+            let param = paramDict["inactive"][0];
+            if (param.value) {
+                let inactiveBlocks = param.value.split(/\s+/).filter(Boolean); // filter removes zero-length strings
+                // check the specified blocks are present
+                for (let inactiveBlock of inactiveBlocks) {
+                    if (!(inactiveBlock in childDict)) {
+                        let error: SyntaxError = {
+                            type: "refcheck",
+                            start: param.start,
+                            end: param.end,
+                            msg: 'subblock specified in inactive parameter value not found: ' + inactiveBlock
+                        };
+                        syntaxErrors.push(error);
+                    }
+                }
+                // add any subblock included in inactive list to inactive 
+                let inactiveChildren: string[] = [];
+                for (let name in childDict) {
+                    if (inactiveBlocks.indexOf(name) >= 0) {
+                        inactiveChildren.push(name);
+                    }
+                }
+                block.inactive = inactiveChildren;
+            }
+        }
+        return syntaxErrors;
+    }
+
+    private updateReferences(
+        refsDict: VariableRefs,
+        paramDict: { [id: string]: OutlineParamItem[]; },
+        nodeParamDict: { [id: string]: moosedb.ParamNode; },
+        configPath: string[]
+    ) {
+        let syntaxErrors: SyntaxError[] = [];
+        for (let pname in paramDict) {
+            if (!(pname in nodeParamDict)) { continue; }
+            let node = nodeParamDict[pname];
+            let vBlocks = this.getVariableDefinitionBlocks(node);
+            for (let param of paramDict[pname]) {
+                if (!param.value) { continue; }
+                // split vector values (e.g. 'a b c')
+                for (let pvalue of param.value.split(/\s+/).filter(Boolean)) {
+                    if (vBlocks !== null) {
+                        let instanceInBlock = null;
+                        for (let vBlock of vBlocks) {
+                            if ([vBlock, pvalue].join("/") in refsDict) {
+                                instanceInBlock = vBlock;
+                                break;
+                            }
+                        }
+                        if (instanceInBlock !== null) {
+                            refsDict[[instanceInBlock, pvalue].join("/")]["refs"].push(param.start);
+                        } else if (vBlocks.indexOf("Functions") >= 0) {
+                            // FunctionName variables can be a string of the actual function, e.g. func = 'x+y'
+                        } else {
+                            let error: SyntaxError = {
+                                type: "refcheck",
+                                msg: pvalue + " references a variable that was not found in the document",
+                                start: param.start,
+                                end: param.end
+                            };
+                            syntaxErrors.push(error);
+                        }
+                    } if (param.name === "type") {
+                        // TODO make optional, also want to ensure that doesn't overwrite variable/material keys
+                        // let key: string;
+                        // let path: string[]
+                        // if (parentPath.length === 0) {
+                        //     key = [block.name, param.value].join("/");
+                        //     path = [block.name, "<type>", param.value];
+                        // } else {
+                        //     key = [parentPath[0], param.value].join("/");
+                        //     path = [parentPath[0], param.value];
+                        // }
+                        // if (key in refsDict) {
+                        //     refsDict[key].refs.push(param.start);
+                        // } else {
+                        //     let match = await this.syntaxdb.matchSyntaxNode(path);
+                        //     if (match && !!match.node.definition) {
+                        //         refsDict[key] = {
+                        //             definition: match.node.definition,
+                        //             refs: [param.start]
+                        //         };
+                        //     } else {
+                        //         refsDict[key] = {
+                        //             refs: [param.start]
+                        //         };
+                        //         // TODO add warning that definition not found
+                        //     }
+                        // }
+                    } else {
+                        let paramTypeMatch = rgx.stdVector.exec(node.cpp_type);
+                        if (node.cpp_type === "MaterialPropertyName" || (paramTypeMatch !== null && paramTypeMatch[2] === "MaterialPropertyName")) {
+                            if ("Materials/" + pvalue in refsDict) {
+                                refsDict["Materials/" + pvalue]["refs"].push(param.start);
+                            } else if (!isNaN(parseInt(pvalue))) {
+                                // MaterialPropertyName can also be a number e.g. see kks_mechanics_VTS.i    
                             } else {
-                                let paramTypeMatch = rgx.stdVector.exec(node.cpp_type);
-                                if (node.cpp_type === "MaterialPropertyName" || (paramTypeMatch !== null && paramTypeMatch[2] === "MaterialPropertyName")) {
-                                    if ("Materials/" + pvalue in refsDict) {
-                                        refsDict["Materials/" + pvalue]["refs"].push(param.start);
-                                    } else if (!isNaN(parseInt(pvalue))) {
-                                        // MaterialPropertyName may be able to be a number e.g. see kks_mechanics_VTS.i    
-                                    } else {
-                                        let error: SyntaxError = {
-                                            type: "matcheck",
-                                            msg: pvalue + " references a material that was not found in the document",
-                                            start: param.start,
-                                            end: param.end
-                                        };
-                                        syntaxErrors.push(error);
-                                    }
-                                }
+                                let error: SyntaxError = {
+                                    type: "matcheck",
+                                    msg: pvalue + " references a material that was not found in the document",
+                                    start: param.start,
+                                    end: param.end
+                                };
+                                syntaxErrors.push(error);
+                            }
+                        } else if (configPath.length === 2 && configPath[0] === "Materials" && param.name === 'material_property_names') {
+                            // check material_property_names param (in Materials sub-block)
+                            let match: null | RegExpExecArray;
+                            let matValue: string | null = null;
+                            if (/^[\-\_a-zA-Z0-9]+$/.test(pvalue)) {
+                                matValue = pvalue;
+                            } else if (match = rgx.matDependance.exec(pvalue)) {
+                                matValue = match[1];
+                            } else if (match = rgx.matDerivative.exec(pvalue)) {
+                                matValue = match[1];
+                            } else if (match = rgx.matNDerivative.exec(pvalue)) {
+                                matValue = match[1];
+                            }
+
+                            if (!!matValue && "Materials/" + matValue in refsDict) {
+                                refsDict["Materials/" + matValue]["refs"].push(param.start);
+                            } else if (!!matValue) {
+                                let error: SyntaxError = {
+                                    type: "matcheck",
+                                    msg: pvalue + " references a material that was not found in the document",
+                                    start: param.start,
+                                    end: param.end
+                                };
+                                syntaxErrors.push(error);
+                            } else {
+                                // TODO handle if our regexes fail
                             }
                         }
                     }
                 }
             }
-
-            // TODO checks of values (e.g. reference is available)
-
         }
-
         return syntaxErrors;
+
     }
 
     /** Close the final block, at a particular level, 
