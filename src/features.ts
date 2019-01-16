@@ -51,6 +51,8 @@ function selectCompleteKind(kind: string, required = false) {
     }
     else if (kind === "closing") {
         return vscode.CompletionItemKind.Text;
+    } else if (kind === "value_snippet") {
+        return vscode.CompletionItemKind.Snippet;
     }
     else {
         return vscode.CompletionItemKind.Text;

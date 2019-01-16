@@ -518,6 +518,51 @@ suite("MooseDoc Tests", function () {
         ]);
     });
 
+    test("Completion; material_property_names parameter", function () {
+        doc.text = `
+[Materials]
+    [./d]
+        type = DerivativeParsedMaterial
+        f_name = a_b
+        material_property_names = 'd3a_b:=D[a_b(x,y),x,x,y]  '
+    [../]
+[]`;
+        let cursor = { row: 5, column: 61 };
+        return expect(mdoc.findCompletions(cursor)
+        ).to.eventually.eql([
+            {
+                "description": "Materials/d/a_b (DerivativeParsedMaterial)",
+                "displayText": "a_b",
+                "insertText": {
+                    "type": "text",
+                    "value": "a_b"
+                },
+                "kind": "value",
+                "replacementPrefix": ""
+            },
+            {
+                "description": "Materials/d/a_b (DerivativeParsedMaterial)",
+                "displayText": "a_b with declared dependences",
+                "insertText": {
+                    "type": "snippet",
+                    "value": "a_b(${2:variable})"
+                },
+                "kind": "value_snippet",
+                "replacementPrefix": ""
+            },
+            {
+                "description": "Materials/d/a_b (DerivativeParsedMaterial)",
+                "displayText": "a_b derivative",
+                "insertText": {
+                    "type": "snippet",
+                    "value": "da_b:=D[a_b,${1:variable}]"
+                },
+                "kind": "value_snippet",
+                "replacementPrefix": ""
+            }
+        ]);
+    });
+
     test("Outline (with closure/duplication errors, missing required parameter, bad indentation)", function () {
         doc.text = `
 []

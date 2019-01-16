@@ -36,7 +36,7 @@ export interface Document {
 }
 
 export interface Completion {
-    kind: "block" | "parameter" | "type" | "value" | "closing";
+    kind: "block" | "parameter" | "type" | "value" | "closing" | "value_snippet";
     displayText: string;
     insertText: { type: "text" | "snippet", value: string };
     replacementPrefix?: string;
@@ -121,7 +121,11 @@ let rgx = {
     blockType: /^\s*type\s*=\s*([^#\s]+)/,
     typeParameter: /^\s*type\s*=\s*[^\s#=\]]*$/,
     parameterCompletion: /^\s*[^\s#=\]]*$/,
-    valueCompletion: /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/,
+    // valueCompletion: /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#=\]]*(\s?)[^'#=\]]*|[^\s#=\]]*)$/,
+    valueCompletion: /^\s*([^\s#=\]]+)\s*=\s*('\s*[^\s'#]*(\s?)[^'#]*|[^\s#]*)$/,
+    // TODO check changing regex (allowing = and ] characters ) doesn't have any unintended consequences (e.g. lines defining functions?)
+    // original regex failed for e.g. "material_property_names = 'Mconst d3Mconst:=D[Mconst(a,b),a,a,b] "
+
     stdVector: /^std::([^:]+::)?vector<([a-zA-Z0-9_]+)(,\s?std::\1allocator<\2>\s?)?>$/,
 
     // if match, returns [line, block name, all characters after block, comment | undefined]
@@ -1031,6 +1035,24 @@ export class MooseDoc {
                         value: def.name
                     }
                 });
+                completions.push({
+                    kind: "value_snippet",
+                    displayText: def.name + " with declared dependences",
+                    description: ["Materials", def.block, def.name].join("/") + " (" + def.type + ")",
+                    insertText: {
+                        type: "snippet",
+                        value: def.name + "(${2:variable})"
+                    }
+                });      
+                completions.push({
+                    kind: "value_snippet",
+                    displayText: def.name + " derivative",
+                    description: ["Materials", def.block, def.name].join("/") + " (" + def.type + ")",
+                    insertText: {
+                        type: "snippet",
+                        value: "d"+def.name+":=D["+def.name+",${1:variable}]"
+                    }
+                }); 
             }
         } else if (param.name === 'active' || param.name === "inactive") {
             completions = this.computeSubBlockNameCompletion(configPath, ['type']);
