@@ -59,17 +59,39 @@
         "moose.diagnostics.error": {
           "type": "array",
           "description": "specify which syntax error types to diagnose as an error",
-          "default": ["closure", "duplication", "refcheck", "matcheck", "dbcheck"],
+          "default": [
+            "closure",
+            "duplication",
+            "refcheck",
+            "matcheck",
+            "dbcheck"
+          ],
           "items": {
-            "enum": ["closure", "duplication", "refcheck", "matcheck", "dbcheck", "format"]
+            "enum": [
+              "closure",
+              "duplication",
+              "refcheck",
+              "matcheck",
+              "dbcheck",
+              "format"
+            ]
           }
         },
         "moose.diagnostics.warning": {
           "type": "array",
           "description": "specify which syntax error types to diagnose as a warning",
-          "default": ["format"],
+          "default": [
+            "format"
+          ],
           "items": {
-            "enum": ["closure", "duplication", "refcheck", "matcheck", "dbcheck", "format"]
+            "enum": [
+              "closure",
+              "duplication",
+              "refcheck",
+              "matcheck",
+              "dbcheck",
+              "format"
+            ]
           }
         }
       }
@@ -82,8 +104,22 @@
       {
         "command": "moose.createFiles",
         "title": "MOOSE: Create MOOSE syntax files"
+      },
+      {
+        "command": "cubit.highlightSelected",
+        "title": "Highlight Entities in Cubit"
       }
     ],
+    "menus": {
+        "editor/context": [
+        {
+           "when": "editorHasSelection",
+           "command": "cubit.highlightSelected",
+           "group": "cubitGroup@1"
+        }
+
+      ] 
+    },
     "languages": [
       {
         "id": "moose",
@@ -121,20 +157,20 @@
     "azure": "nyc --reporter=cobertura --reporter=html ./node_modules/mocha/bin/_mocha -u tdd --timeout 999999 --colors out/test/ --reporter mocha-junit-reporter --reporter-options mochaFile=./TEST-RESULTS.xml"
   },
   "devDependencies": {
-    "nyc": "^13.1.0",
-    "mocha-junit-reporter": "^1.18.0",
-    "chai": "^4.2.0",
-    "chai-as-promised": "^7.1.1",
-    "tslint": "^5.8.0",
-    "typescript": "^3.1.4",
-    "vscode": "^1.1.25",
-    "@types/node": "^8.10.25",
+    "@types/chai": "^4.1.7",
+    "@types/chai-as-promised": "^7.1.0",
     "@types/glob-to-regexp": "^0.4.0",
     "@types/js-yaml": "3.11.4",
-    "@types/path-parse": "^1.0.6",
     "@types/mocha": "^2.2.42",
-    "@types/chai": "^4.1.7",
-    "@types/chai-as-promised": "^7.1.0"
+    "@types/node": "^8.10.25",
+    "@types/path-parse": "^1.0.6",
+    "chai": "^4.2.0",
+    "chai-as-promised": "^7.1.1",
+    "mocha-junit-reporter": "^1.18.0",
+    "nyc": "^13.1.0",
+    "tslint": "^5.8.0",
+    "typescript": "^3.1.4",
+    "@types/vscode": "^1.51.0"
   },
   "dependencies": {
     "glob-to-regexp": "^0.4.0",
